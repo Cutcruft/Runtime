@@ -1,0 +1,4 @@
+id: demo
+version: 1.0.0
+apiVersion: 1
+main: com.example.demo.DemoPlugin

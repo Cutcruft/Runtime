@@ -1,0 +1,25 @@
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.kilo/
+*.iml
+.vscode/
+
+# Logs
+*.log
+
+# Maven build output
+target/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Copied frontend build (populated by `make build`)
+runtime/src/main/resources/static/
+
+# Assembled plugins (populated by `make plugin`)
+plugins/demo/
+plugins/demo-storage/

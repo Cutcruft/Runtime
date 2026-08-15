@@ -33,17 +33,24 @@ class ListTasksCommand : Command("list", "List tasks") {
     override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
         val p = params as? Map<*, *>
         val boardId = p?.get("boardId") as? String
-        val tasks = context.objectList<Task>(TASK_TYPE).values()
-        val filtered = if (boardId != null) {
-            val parsed = runCatching { ObjectId(java.util.UUID.fromString(boardId)) }.getOrNull()
-            if (parsed == null) {
-                return CommandResult.error("Invalid boardId: $boardId")
-            }
-            tasks.filter { it.board?.objectId == parsed }
-        } else {
-            tasks
+        val parsedBoard = boardId?.let {
+            runCatching { ObjectId(java.util.UUID.fromString(it)) }.getOrNull()
         }
-        return CommandResult.success(value = filtered)
+        if (boardId != null && parsedBoard == null) {
+            return CommandResult.error("Invalid boardId: $boardId")
+        }
+        val list = context.objectList<Task>(TASK_TYPE)
+        val rows = list.list().mapNotNull { ref ->
+            val task = list.get(ref.objectId) ?: return@mapNotNull null
+            if (parsedBoard != null && task.board?.objectId != parsedBoard) return@mapNotNull null
+            mapOf(
+                "id" to ref.objectId.value.toString(),
+                "title" to task.title,
+                "status" to task.status,
+                "boardId" to task.board?.objectId?.value?.toString()
+            )
+        }
+        return CommandResult.success(value = rows)
     }
 }
 

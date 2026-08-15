@@ -20,8 +20,16 @@ class CreateBoardCommand : Command("createboard", "Create a board") {
 
 class ListBoardsCommand : Command("listboards", "List all boards") {
     override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
-        val boards = context.objectList<Board>(BOARD_TYPE).values()
-        return CommandResult.success(value = boards)
+        val list = context.objectList<Board>(BOARD_TYPE)
+        val rows = list.list().mapNotNull { ref ->
+            val board = list.get(ref.objectId) ?: return@mapNotNull null
+            mapOf(
+                "id" to ref.objectId.value.toString(),
+                "name" to board.name,
+                "description" to board.description
+            )
+        }
+        return CommandResult.success(value = rows)
     }
 }
 

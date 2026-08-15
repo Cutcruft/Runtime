@@ -1,7 +1,7 @@
 package runtime.application.audit
 
-import runtime.domain.audit.AuditEvent
-import runtime.domain.project.Project
+import runtime.domain.models.AuditEvent
+import runtime.domain.models.Project
 
 class AuditReplayer {
     fun replay(project: Project, events: List<AuditEvent>) {

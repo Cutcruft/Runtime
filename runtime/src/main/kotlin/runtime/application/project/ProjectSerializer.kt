@@ -2,14 +2,14 @@ package runtime.application.project
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
-import runtime.domain.entity.EntityRegistry
+import java.util.UUID
 import runtime.domain.entity.EntityType
+import runtime.domain.models.Project
+import runtime.domain.models.ProjectId
 import runtime.domain.obj.ObjectId
 import runtime.domain.obj.ObjectList
-import runtime.domain.obj.SynchronizedObjectList
-import runtime.domain.project.Project
-import runtime.domain.project.ProjectId
-import java.util.UUID
+import runtime.domain.repositories.EntityRegistry
+import runtime.infrastructure.obj.SynchronizedObjectList
 
 class ProjectSerializer(private val entityRegistry: EntityRegistry) {
     private val mapper = ObjectMapper().registerModule(KotlinModule.Builder().build())

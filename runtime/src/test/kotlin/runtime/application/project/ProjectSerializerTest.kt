@@ -1,20 +1,20 @@
 package runtime.application.project
 
-import runtime.domain.entity.EntityDefinition
-import runtime.domain.entity.EntityRegistry
-import runtime.domain.entity.EntityType
-import runtime.domain.obj.ObjectList
-import runtime.domain.obj.SynchronizedObjectList
-import runtime.domain.project.Project
-import runtime.domain.project.ProjectId
-import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import org.junit.jupiter.api.Test
+import runtime.domain.entity.EntityDefinition
+import runtime.domain.entity.EntityType
+import runtime.domain.models.Project
+import runtime.domain.models.ProjectId
+import runtime.domain.repositories.EntityRegistry
+import runtime.infrastructure.inmem.InMemoryEntityRegistry
+import runtime.infrastructure.obj.SynchronizedObjectList
 
 data class TaskModel(val title: String, val status: String)
 
 class ProjectSerializerTest {
     private fun registry(): EntityRegistry {
-        val registry = EntityRegistry()
+        val registry = InMemoryEntityRegistry()
         registry.register(object : EntityDefinition {
             override val type = EntityType("demo.task")
             override val modelClass = TaskModel::class.java

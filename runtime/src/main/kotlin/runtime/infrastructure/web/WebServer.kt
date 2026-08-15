@@ -1,8 +1,5 @@
 package runtime.infrastructure.web
 
-import runtime.domain.workspace.Workspace
-import runtime.interfaces.http.HttpEndpoints
-import runtime.interfaces.ws.WsSessionHandler
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
@@ -10,31 +7,34 @@ import io.ktor.server.netty.Netty
 import io.ktor.server.routing.routing
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.webSocket
+import io.ktor.websocket.DefaultWebSocketSession
+import runtime.application.session.CommandDispatchService
+import runtime.domain.models.Messages
+import runtime.domain.models.RuntimeConfig
+import runtime.domain.models.WorkspaceConfiguration
+import runtime.domain.repositories.SessionRepository
+import runtime.infrastructure.ws.WsSessionHandler
 
 class WebServer(
-    private val workspace: Workspace,
-    private val host: String = "0.0.0.0",
-    private val port: Int = 8080
+    private val config: RuntimeConfig,
+    private val sessionRepository: SessionRepository,
+    private val dispatchService: CommandDispatchService,
+    private val workspaceConfiguration: WorkspaceConfiguration,
+    private val activeSessions: MutableMap<String, DefaultWebSocketSession>,
+    private val messages: Messages
 ) {
-    private val wsHandler = WsSessionHandler(
-        projectService = workspace.projectService,
-        commandExecutor = workspace.commandExecutor,
-        sessionRegistry = workspace.sessionRegistry
-    )
-    private val httpEndpoints = HttpEndpoints(workspace.configuration)
-
     fun start() {
-        embeddedServer(Netty, port = port, host = host, module = {
+        embeddedServer(Netty, port = config.server.port, host = config.server.host, module = {
             module()
         }).start(wait = false)
     }
 
     fun Application.module() {
         install(WebSockets)
-        httpEndpoints.module()(this)
+        HttpEndpoints(config.http, workspaceConfiguration).module()(this)
         routing {
-            webSocket("/ws") {
-                wsHandler.handle(this)
+            webSocket(config.ws.path) {
+                WsSessionHandler(dispatchService, sessionRepository, activeSessions, messages).handle(this)
             }
         }
     }

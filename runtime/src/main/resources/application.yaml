@@ -1,7 +1,73 @@
-ktor:
-  deployment:
-    port: 8080
-    host: "0.0.0.0"
-  application:
-    modules:
-      - runtime.MainKt
+server:
+  host: 0.0.0.0
+  port: 8080
+
+http:
+  configPath: /config
+  staticRoot: static
+
+ws:
+  path: /ws
+
+plugins:
+  directories:
+    - plugins
+  configFileName: config.yaml
+  apiVersion: 1
+
+command:
+  executorThreads: null
+
+audit:
+  enabled: true
+  maxEventsPerProject: 10000
+
+ui:
+  mainPlugin: null
+  landingPage: null
+  navigationComponentType: Navigation
+  pageComponentType: Page
+  appComponentType: App
+  shortcutComponentType: Shortcut
+  subscriptionComponentType: EventSubscription
+  app:
+    title: Runtime
+    logo: null
+    layout: topbar
+  navigationFields:
+    id: id
+    label: label
+    pageId: pageId
+    order: order
+  pageFields:
+    id: id
+    title: title
+    sections: sections
+  appFields:
+    title: title
+    logo: logo
+    layout: layout
+  theme:
+    mode: light
+    tokens: {}
+
+messages:
+  missingCommandId: "Missing commandId"
+  unknownMessageType: "Unknown message type: {type}"
+  sessionNotBound: "Session not bound to a project. Send project.create or project.open first."
+  sessionNotFound: "Session not found"
+  missingProjectId: "Missing projectId"
+  invalidProjectId: "Invalid projectId: {projectId}"
+  projectNotFound: "Project not found: {projectId}"
+  commandNotFound: "Command not found: {commandId}"
+  commandExecutionFailed: "Command execution failed: {message}"
+  missingData: "Missing data"
+  missingParameters: "Missing parameters"
+  unknownEntityType: "Unknown entity type: {entityType}"
+  pluginLoadFailed: "Failed to load plugin {pluginId}: {message}"
+  circularDependencies: "Circular plugin dependencies detected: {plugins}"
+  description.create: "Create a new project"
+  description.open: "Open an existing project"
+  description.list: "List all projects"
+  description.save: "Serialize project state to JSON"
+  description.load: "Restore project from serialized JSON data"

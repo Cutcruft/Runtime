@@ -16,10 +16,11 @@ Frontend всегда обращается к Runtime через HTTP API.
                               |
 +---------------------------------------------------------------+
 |  Runtime (domain)                                             |
-|  - ProjectRegistry      - CommandRegistry                     |
-|  - ProjectService       - EntityRegistry                      |
-|  - Project              - PluginManager                       |
-|  - ObjectList           - WorkspaceConfiguration              |
+|  - models/ (Project, Session, AuditEvent, RuntimeConfig, ...) |
+|  - repositories/ (ProjectRepository, SessionRepository, ...)  |
+|  - ProjectService      - EntityRegistry                       |
+|  - CommandExecutor     - PluginManager                        |
+|  - WorkspaceConfiguration                                     |
 +---------------------------------------------------------------+
                               |
                          Plugin API
@@ -37,14 +38,14 @@ Frontend всегда обращается к Runtime через HTTP API.
 | Модуль | Содержимое | Назначение |
 |---|---|---|
 | `sdk` (артефакт `io.runtime:runtime-sdk`) | Контракты Plugin API: `Plugin`, `PluginContext`, `Command`, `CommandContext`, `CommandResult`, `EntityDefinition`, `EntityType`, `ObjectList`, `ObjectId`, `ObjectRef`, `PluginInfo/Id/Version`, `UIDefinition` | Артефакт, против которого компилируются плагины |
-| `runtime` | Ядро: `Project`, `ProjectService`, `ProjectRegistry`, `SynchronizedObjectList`, реестры, `PluginManager`, HTTP/WS | Запуск Runtime |
+| `runtime` | Ядро: `Project`, `ProjectService`, `ProjectRepository`, `SynchronizedObjectList`, реестры, `PluginManager`, HTTP/WS | Запуск Runtime |
 
 Слои внутри ядра:
 
 | Слой | Содержимое | Зависит от |
 |---|---|---|
-| Application | `Server`, HTTP API, `CommandExecutor` | domain, sdk |
-| Domain | `ProjectRegistry`, `ProjectService`, `Project`, `SynchronizedObjectList`, `CommandRegistry`, `EntityRegistry`, `PluginManager` | sdk |
+| Application | `CommandExecutor`, `ProjectService`, `AuditService`, `SessionManager`, `CommandDispatchService`, `WorkspaceConfigurationBuilder`, HTTP/WS | domain, sdk |
+| Domain | `models/` (модели: `Project`, `Session`, `AuditEvent`, `RuntimeConfig`, `WorkspaceConfiguration`, ...), `repositories/` (порты-хранилища: `ProjectRepository`, `SessionRepository`, `CommandRegistry`, `EntityRegistry`, `AuditLog`) | sdk |
 | SDK (контракты) | `Plugin`, `Command`, `CommandContext`, `EntityDefinition`, `ObjectList` | kotlin-stdlib |
 | Plugins | внешние JAR, реализуют контракты SDK | sdk |
 
@@ -104,14 +105,17 @@ interface ObjectList<T> {
 
 Каждая операция работает под ReadWriteLock: чтение — read lock, изменение — write lock.
 
-### 3.3 ProjectRegistry
+### 3.3 ProjectRepository (порт) и InMemoryProjectRepository
+
+Хранилище активных проектов. Порт `ProjectRepository` объявлен в `runtime.domain.repositories`, реализация `InMemoryProjectRepository` (`ConcurrentHashMap`) — в `runtime.infrastructure.inmem`.
 
 ```kotlin
-class ProjectRegistry {
-    fun create(name: String): Project
-    fun get(id: UUID): Project?
-    fun list(): List<Project>
-    fun delete(id: UUID): Boolean
+interface ProjectRepository {
+    fun register(project: Project)
+    fun get(id: ProjectId): Project?
+    fun list(): Set<ProjectId>
+    fun remove(id: ProjectId): Project?
+    fun replace(project: Project)
 }
 ```
 
@@ -121,12 +125,14 @@ class ProjectRegistry {
 
 ```kotlin
 class ProjectService(
-    private val projectRegistry: ProjectRegistry,
+    private val projectRepository: ProjectRepository,
     private val projectFactory: ProjectFactory,
     private val serializer: ProjectSerializer
 ) {
     fun createProject(id: ProjectId): Project
     fun getProject(id: ProjectId): Project?
+    fun listProjects(): Set<ProjectId>
+    fun removeProject(id: ProjectId): Project?
     fun saveProject(project: Project): String
     fun loadProject(id: ProjectId, data: String): Project
 }
@@ -208,7 +214,7 @@ class CommandResult(
 
 1. Frontend отправляет WebSocket-сообщение `command.execute` с `commandId` и `params`.
 2. `WsSessionHandler` находит привязанный к сессии проект и вызывает `CommandExecutor`.
-3. `CommandExecutor` создаёт `CommandContextImpl` (реализует `CommandContext`; для встроенных команд `ProjectBoundCommandContext` отдаёт `Project` ядру).
+3. `CommandExecutor` создаёт `CommandContextImpl` (реализует `CommandContext`; встроенные команды получают `Project` через приведение к `CommandContextImpl`).
 4. Команда исполняется и возвращает `CommandResult`.
 5. Runtime сериализует результат в JSON (Jackson).
 
@@ -235,11 +241,17 @@ CutCruft/
 │       └── plugin/            # Plugin, PluginContext, PluginInfo/Id/Version, UIDefinition
 ├── runtime/
 │   ├── src/main/kotlin/runtime/
-│   │   ├── application/       # CommandExecutor, CommandContextImpl, ProjectService/Serializer, AuditService, WorkspaceBuilder
-│   │   ├── domain/            # реестры и модели: command, entity, obj, project, session, audit, workspace
-│   │   ├── infrastructure/    # configuration (ConfigLoader), plugin (PluginLoader, DependencyResolver), web (WebServer)
-│   │   ├── interfaces/        # http (HttpEndpoints), ws (WsProtocol, WsSessionHandler, SessionRouting)
-│   │   └── Main.kt
+│   │   ├── application/       # CommandExecutor, CommandContextImpl, ProjectLocks, ProjectService/Serializer/Factory,
+│   │   │                      # BuiltInProjectCommands, AuditService/AuditReplayer, SessionManager/CommandDispatchService,
+│   │   │                      # WorkspaceConfigurationBuilder
+│   │   ├── domain/            # models/ (по файлу на сущность: Project, Session, AuditEvent, WorkspaceConfiguration,
+│   │   │                      # RuntimeConfig, PluginDescriptor, CommandIds, Messages)
+│   │   │                      # repositories/ (порты: ProjectRepository, SessionRepository, CommandRegistry,
+│   │   │                      # EntityRegistry, AuditLog)
+│   │   ├── infrastructure/    # configuration (ConfigLoader), inmem (InMemory* адаптеры), obj (SynchronizedObjectList),
+│   │   │                      # plugin (PluginLoader, PluginClassLoader, PluginDescriptorLoader, PluginContextImpl),
+│   │   │                      # web (WebServer, HttpEndpoints), ws (WsSessionHandler, WsProtocol, WsEnvelope, WsMessageType)
+│   │   └── Main.kt            # композиционный корень
 │   ├── src/main/resources/static/  # frontend build (копируется и попадает в JAR)
 │   ├── src/test/kotlin/       # тесты
 │   └── pom.xml

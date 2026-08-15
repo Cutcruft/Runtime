@@ -29,8 +29,56 @@ class StoragePlugin : Plugin() {
         context.registerCommand(ExportCommand())
         context.registerCommand(CountsCommand())
 
-        context.registerUi(UiComponent("Page", mapOf("id" to "export", "title" to "Export")))
-        context.registerUi(UiComponent("Navigation", mapOf("id" to "nav-export", "label" to "Export", "pageId" to "export")))
-        context.registerUi(UiComponent("Button", mapOf("label" to "Export JSON", "command" to "demo-storage.export")))
+        context.registerUi(
+            UiComponent(
+                "Page",
+                mapOf(
+                    "id" to "export",
+                    "title" to "Export",
+                    "sections" to listOf(
+                        mapOf(
+                            "id" to "export-actions",
+                            "layout" to "stack",
+                            "columns" to 1,
+                            "components" to listOf(
+                                mapOf(
+                                    "type" to "Button",
+                                    "config" to mapOf("label" to "Export JSON", "command" to "demo-storage.export")
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        )
+        context.registerUi(
+            UiComponent(
+                "Navigation",
+                mapOf("id" to "nav-export", "label" to "Export", "pageId" to "export", "order" to 3)
+            )
+        )
+        context.registerUi(
+            UiComponent(
+                "Shortcut",
+                mapOf(
+                    "id" to "export-quick",
+                    "keys" to listOf("mod+e"),
+                    "action" to "command",
+                    "command" to "demo-storage.export"
+                )
+            )
+        )
+        context.registerUi(
+            UiComponent(
+                "EventSubscription",
+                mapOf(
+                    "id" to "toast-task-changed",
+                    "event" to "object.changed",
+                    "filter" to mapOf("entityType" to "demo.task"),
+                    "action" to "toast",
+                    "params" to mapOf("message" to "Task data changed")
+                )
+            )
+        )
     }
 }

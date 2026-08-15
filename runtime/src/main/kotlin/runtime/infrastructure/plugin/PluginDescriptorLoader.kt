@@ -1,23 +1,27 @@
 package runtime.infrastructure.plugin
 
+import java.io.File
+import org.yaml.snakeyaml.Yaml
+import runtime.domain.models.PluginDependency
+import runtime.domain.models.PluginDescriptor
 import runtime.domain.plugin.PluginId
 import runtime.domain.plugin.PluginVersion
-import org.yaml.snakeyaml.Yaml
-import java.io.File
-import java.net.URL
 
-class PluginDescriptorLoader {
+class PluginDescriptorLoader(
+    private val configFileName: String = "config.yaml",
+    private val defaultApiVersion: Int = 1
+) {
     private val yaml = Yaml()
 
     fun load(pluginDir: String): PluginDescriptor {
-        val configFile = File(pluginDir, "config.yaml")
+        val configFile = File(pluginDir, configFileName)
         if (!configFile.exists()) {
-            throw IllegalArgumentException("Plugin config.yaml not found in $pluginDir")
+            throw IllegalArgumentException("Plugin config file not found in $pluginDir")
         }
         val map = yaml.load(configFile.readText()) as Map<String, Any>
         val id = PluginId(map["id"] as String)
         val version = PluginVersion(map["version"] as String)
-        val apiVersion = (map["apiVersion"] as Number).toInt()
+        val apiVersion = (map["apiVersion"] as? Number)?.toInt() ?: defaultApiVersion
         val mainClass = map["main"] as String
         val deps = (map["dependencies"] as? List<Map<String, Any>>)?.map { dep ->
             PluginDependency(

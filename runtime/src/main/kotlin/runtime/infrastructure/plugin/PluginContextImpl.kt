@@ -1,18 +1,18 @@
 package runtime.infrastructure.plugin
 
 import runtime.domain.command.Command
-import runtime.domain.command.CommandRegistry
 import runtime.domain.entity.EntityDefinition
-import runtime.domain.entity.EntityRegistry
 import runtime.domain.plugin.PluginContext
 import runtime.domain.plugin.PluginId
 import runtime.domain.plugin.UIDefinition
+import runtime.domain.repositories.CommandRegistry
+import runtime.domain.repositories.EntityRegistry
 
 class PluginContextImpl(
     private val pluginId: PluginId,
     private val entityRegistry: EntityRegistry,
     private val commandRegistry: CommandRegistry,
-    private val uiDefinitions: MutableList<UIDefinition>
+    private val onUiRegistered: (UIDefinition) -> Unit
 ) : PluginContext {
 
     override fun registerEntity(definition: EntityDefinition) {
@@ -24,6 +24,6 @@ class PluginContextImpl(
     }
 
     override fun registerUi(ui: UIDefinition) {
-        uiDefinitions.add(ui)
+        onUiRegistered(ui)
     }
 }

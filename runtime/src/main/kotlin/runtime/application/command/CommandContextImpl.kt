@@ -1,15 +1,17 @@
 package runtime.application.command
 
 import runtime.domain.command.CommandContext
-import runtime.domain.command.ProjectBoundCommandContext
 import runtime.domain.entity.EntityType
+import runtime.domain.models.Messages
+import runtime.domain.models.Project
 import runtime.domain.obj.ObjectId
 import runtime.domain.obj.ObjectList
-import runtime.domain.project.Project
 
 class CommandContextImpl(
-    override val project: Project
-) : ProjectBoundCommandContext {
+    val project: Project,
+    private val projectLocks: ProjectLocks,
+    private val messages: Messages
+) : CommandContext {
 
     override fun <T> getObject(entityType: EntityType, objectId: ObjectId): T? {
         return project.objectList<T>(entityType)?.get(objectId)
@@ -17,8 +19,8 @@ class CommandContextImpl(
 
     override fun <T> objectList(entityType: EntityType): ObjectList<T> {
         return project.objectList<T>(entityType)
-            ?: throw IllegalArgumentException("Unknown entity type: $entityType")
+            ?: throw IllegalArgumentException(messages.format(Messages.UNKNOWN_ENTITY_TYPE, "entityType" to entityType.value))
     }
 
-    override fun <T> withProjectLock(block: () -> T): T = project.withLock(block)
+    override fun <T> withProjectLock(block: () -> T): T = projectLocks.withProjectLock(project.id, block)
 }

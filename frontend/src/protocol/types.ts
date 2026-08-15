@@ -17,6 +17,8 @@ export interface NavigationEntry {
   pageId?: string
   order?: number
   pluginId?: string
+  group?: string
+  icon?: string
 }
 
 export interface ComponentDefinition {
@@ -38,7 +40,7 @@ export interface PageDefinition {
 }
 
 export type ShortcutScope = 'global' | 'page' | 'component'
-export type ShortcutAction = 'navigate' | 'command' | 'event'
+export type ShortcutAction = 'navigate' | 'command' | 'event' | 'pageBack' | 'pageForward'
 
 export interface ShortcutEntry {
   id: string
@@ -65,14 +67,56 @@ export interface SubscriptionEntry {
 export interface CommandEntry {
   id: string
   description: string
+  group?: string
 }
 
 export interface EntityEntry {
   type: string
 }
 
+export interface MenuItemEntry {
+  label: string
+  icon?: string
+  command?: string
+  params?: Record<string, unknown>
+  spec?: Record<string, unknown>
+  confirm?: string
+  items?: MenuItemEntry[]
+  divider?: boolean
+  disabled?: boolean
+  danger?: boolean
+  shortcut?: string
+}
+
+export interface OverlayEntry {
+  id: string
+  kind: string
+  title?: string
+  content?: ComponentDefinition
+  items?: MenuItemEntry[]
+  width?: string
+  side?: string
+  text?: string
+  placement?: string
+}
+
+export interface OverlayTriggerEntry {
+  event: string
+  componentType?: string
+  objectType?: string
+  componentId?: string
+  overlay: string
+  anchor?: string
+}
+
 export interface TransportConfig {
   wsPath: string
+}
+
+export interface I18nConfiguration {
+  defaultLocale: string
+  locales: string[]
+  messages: Record<string, Record<string, string>>
 }
 
 export interface WorkspaceConfig {
@@ -83,6 +127,9 @@ export interface WorkspaceConfig {
   subscriptions: SubscriptionEntry[]
   commands: CommandEntry[]
   entities: EntityEntry[]
+  overlays: OverlayEntry[]
+  overlayTriggers: OverlayTriggerEntry[]
+  i18n: I18nConfiguration
   transport: TransportConfig
 }
 

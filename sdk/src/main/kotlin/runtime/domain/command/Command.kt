@@ -2,7 +2,8 @@ package runtime.domain.command
 
 abstract class Command(
     val name: String,
-    val description: String = ""
+    val description: String = "",
+    val group: String? = null
 ) {
     init {
         require(name.isNotBlank()) { "Command name must not be blank" }

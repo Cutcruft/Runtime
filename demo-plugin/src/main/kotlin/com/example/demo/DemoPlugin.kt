@@ -22,6 +22,7 @@ class DemoPlugin : Plugin() {
     override fun initialize(context: PluginContext) {
         context.registerEntity(BoardDefinition)
         context.registerEntity(TaskDefinition)
+        context.registerEntity(DocumentDefinition)
 
         context.registerCommand(CreateBoardCommand())
         context.registerCommand(ListBoardsCommand())
@@ -31,6 +32,11 @@ class DemoPlugin : Plugin() {
         context.registerCommand(CompleteTaskCommand())
         context.registerCommand(DeleteTaskCommand())
         context.registerCommand(TaskStatsCommand())
+        context.registerCommand(CreateDocumentCommand())
+        context.registerCommand(ListDocumentsCommand())
+        context.registerCommand(LoadDocumentCommand())
+        context.registerCommand(SaveDocumentCommand())
+        context.registerCommand(MentionsCommand())
 
         registerUi(context)
     }
@@ -40,9 +46,9 @@ class DemoPlugin : Plugin() {
             UiComponent(
                 "App",
                 mapOf(
-                    "title" to "Board App",
+                    "title" to "{{demo.app.title}}",
                     "logo" to "logo.png",
-                    "layout" to "topbar"
+                    "layout" to "sidebar"
                 )
             )
         )
@@ -52,7 +58,7 @@ class DemoPlugin : Plugin() {
                 "Page",
                 mapOf(
                     "id" to "boards",
-                    "title" to "Boards",
+                    "title" to "{{demo.page.boards}}",
                     "sections" to listOf(
                         mapOf(
                             "id" to "boards-stats",
@@ -62,7 +68,7 @@ class DemoPlugin : Plugin() {
                                 mapOf(
                                     "type" to "Stat",
                                     "config" to mapOf(
-                                        "label" to "Boards",
+                                        "label" to "{{demo.boards.stat.boards}}",
                                         "data" to mapOf("command" to "demo.listboards", "entityType" to "demo.board"),
                                         "tone" to "blue"
                                     )
@@ -70,7 +76,7 @@ class DemoPlugin : Plugin() {
                                 mapOf(
                                     "type" to "Stat",
                                     "config" to mapOf(
-                                        "label" to "Open tasks",
+                                        "label" to "{{demo.boards.stat.open}}",
                                         "data" to mapOf("command" to "demo.stats", "entityType" to "demo.task"),
                                         "valueKey" to "open",
                                         "tone" to "amber"
@@ -79,7 +85,7 @@ class DemoPlugin : Plugin() {
                                 mapOf(
                                     "type" to "Stat",
                                     "config" to mapOf(
-                                        "label" to "Done tasks",
+                                        "label" to "{{demo.boards.stat.done}}",
                                         "data" to mapOf("command" to "demo.stats", "entityType" to "demo.task"),
                                         "valueKey" to "done",
                                         "tone" to "green"
@@ -95,10 +101,10 @@ class DemoPlugin : Plugin() {
                                 mapOf(
                                     "type" to "Card",
                                     "config" to mapOf(
-                                        "title" to "Boards",
-                                        "subtitle" to "Manage your boards",
+                                        "title" to "{{demo.boards.card.title}}",
+                                        "subtitle" to "{{demo.boards.card.subtitle}} · {{demo.app.edition}}",
                                         "headerActions" to listOf(
-                                            mapOf("label" to "New Task", "variant" to "primary", "command" to "demo.create", "params" to mapOf("title" to "Quick task"))
+                                            mapOf("label" to "{{demo.boards.newTask}}", "variant" to "primary", "command" to "demo.create", "params" to mapOf("title" to "Quick task"))
                                         ),
                                         "components" to listOf(
                                             mapOf(
@@ -111,8 +117,8 @@ class DemoPlugin : Plugin() {
                                                     "pagination" to mapOf("pageSize" to 5, "pageSizeOptions" to listOf(5, 10, 25)),
                                                     "showRowCount" to true,
                                                     "columns" to listOf(
-                                                        mapOf("key" to "name", "label" to "Name", "sortable" to true),
-                                                        mapOf("key" to "description", "label" to "Description")
+                                                        mapOf("key" to "name", "label" to "{{demo.boards.col.name}}", "sortable" to true),
+                                                        mapOf("key" to "description", "label" to "{{demo.boards.col.description}}")
                                                     )
                                                 )
                                             )
@@ -122,16 +128,16 @@ class DemoPlugin : Plugin() {
                                 mapOf(
                                     "type" to "Card",
                                     "config" to mapOf(
-                                        "title" to "Create Board",
+                                        "title" to "{{demo.boards.create.title}}",
                                         "components" to listOf(
                                             mapOf(
                                                 "type" to "Form",
                                                 "config" to mapOf(
                                                     "command" to "demo.createboard",
-                                                    "submitLabel" to "Create Board",
+                                                    "submitLabel" to "{{demo.boards.create.submit}}",
                                                     "fields" to listOf(
-                                                        mapOf("name" to "name", "label" to "Name", "type" to "text", "required" to true),
-                                                        mapOf("name" to "description", "label" to "Description", "type" to "textarea")
+                                                        mapOf("name" to "name", "label" to "{{demo.boards.create.name}}", "type" to "text", "required" to true),
+                                                        mapOf("name" to "description", "label" to "{{demo.boards.create.description}}", "type" to "textarea")
                                                     )
                                                 )
                                             )
@@ -152,7 +158,7 @@ class DemoPlugin : Plugin() {
                                         "tabs" to listOf(
                                             mapOf(
                                                 "id" to "labels",
-                                                "label" to "Badges",
+                                                "label" to "{{demo.tabs.badges}}",
                                                 "components" to listOf(
                                                     mapOf(
                                                         "type" to "Space",
@@ -160,11 +166,11 @@ class DemoPlugin : Plugin() {
                                                             "gap" to "0.5rem",
                                                             "wrap" to true,
                                                             "components" to listOf(
-                                                                mapOf("type" to "Badge", "config" to mapOf("text" to "Default")),
-                                                                mapOf("type" to "Badge", "config" to mapOf("text" to "Primary", "tone" to "primary")),
-                                                                mapOf("type" to "Badge", "config" to mapOf("text" to "Success", "tone" to "green")),
-                                                                mapOf("type" to "Badge", "config" to mapOf("text" to "Warning", "tone" to "amber")),
-                                                                mapOf("type" to "Badge", "config" to mapOf("text" to "Danger", "tone" to "red"))
+                                                                mapOf("type" to "Badge", "config" to mapOf("text" to "{{demo.badge.default}}")),
+                                                                mapOf("type" to "Badge", "config" to mapOf("text" to "{{demo.badge.primary}}", "tone" to "primary")),
+                                                                mapOf("type" to "Badge", "config" to mapOf("text" to "{{demo.badge.success}}", "tone" to "green")),
+                                                                mapOf("type" to "Badge", "config" to mapOf("text" to "{{demo.badge.warning}}", "tone" to "amber")),
+                                                                mapOf("type" to "Badge", "config" to mapOf("text" to "{{demo.badge.danger}}", "tone" to "red"))
                                                             )
                                                         )
                                                     )
@@ -172,7 +178,7 @@ class DemoPlugin : Plugin() {
                                             ),
                                             mapOf(
                                                 "id" to "buttons",
-                                                "label" to "Buttons",
+                                                "label" to "{{demo.tabs.buttons}}",
                                                 "components" to listOf(
                                                     mapOf(
                                                         "type" to "Space",
@@ -180,10 +186,10 @@ class DemoPlugin : Plugin() {
                                                             "gap" to "0.5rem",
                                                             "wrap" to true,
                                                             "components" to listOf(
-                                                                mapOf("type" to "Button", "config" to mapOf("label" to "Default")),
-                                                                mapOf("type" to "Button", "config" to mapOf("label" to "Primary", "variant" to "primary")),
-                                                                mapOf("type" to "Button", "config" to mapOf("label" to "Danger", "variant" to "danger")),
-                                                                mapOf("type" to "Button", "config" to mapOf("label" to "Ghost", "variant" to "ghost"))
+                                                                mapOf("type" to "Button", "config" to mapOf("label" to "{{demo.button.default}}")),
+                                                                mapOf("type" to "Button", "config" to mapOf("label" to "{{demo.button.primary}}", "variant" to "primary")),
+                                                                mapOf("type" to "Button", "config" to mapOf("label" to "{{demo.button.danger}}", "variant" to "danger")),
+                                                                mapOf("type" to "Button", "config" to mapOf("label" to "{{demo.button.ghost}}", "variant" to "ghost"))
                                                             )
                                                         )
                                                     )
@@ -201,7 +207,7 @@ class DemoPlugin : Plugin() {
         context.registerUi(
             UiComponent(
                 "Navigation",
-                mapOf("id" to "nav-boards", "label" to "Boards", "pageId" to "boards", "order" to 1)
+                mapOf("id" to "nav-boards", "label" to "{{demo.page.boards}}", "pageId" to "boards", "order" to 1, "group" to "{{demo.nav.group.overview}}", "icon" to "▦")
             )
         )
 
@@ -210,7 +216,7 @@ class DemoPlugin : Plugin() {
                 "Page",
                 mapOf(
                     "id" to "tasks",
-                    "title" to "Tasks",
+                    "title" to "{{demo.page.tasks}}",
                     "sections" to listOf(
                         mapOf(
                             "id" to "tasks-stats",
@@ -220,7 +226,7 @@ class DemoPlugin : Plugin() {
                                 mapOf(
                                     "type" to "Stat",
                                     "config" to mapOf(
-                                        "label" to "Total tasks",
+                                        "label" to "{{demo.tasks.stat.total}}",
                                         "data" to mapOf("command" to "demo.list", "entityType" to "demo.task"),
                                         "tone" to "blue"
                                     )
@@ -228,7 +234,7 @@ class DemoPlugin : Plugin() {
                                 mapOf(
                                     "type" to "Stat",
                                     "config" to mapOf(
-                                        "label" to "Open",
+                                        "label" to "{{demo.tasks.stat.open}}",
                                         "data" to mapOf("command" to "demo.stats", "entityType" to "demo.task"),
                                         "valueKey" to "open",
                                         "tone" to "amber"
@@ -237,7 +243,7 @@ class DemoPlugin : Plugin() {
                                 mapOf(
                                     "type" to "Stat",
                                     "config" to mapOf(
-                                        "label" to "Done",
+                                        "label" to "{{demo.tasks.stat.done}}",
                                         "data" to mapOf("command" to "demo.stats", "entityType" to "demo.task"),
                                         "valueKey" to "done",
                                         "tone" to "green"
@@ -261,16 +267,16 @@ class DemoPlugin : Plugin() {
                                         "showRowCount" to true,
                                         "rowActions" to listOf(
                                             mapOf(
-                                                "label" to "Complete",
+                                                "label" to "{{demo.tasks.complete}}",
                                                 "command" to "demo.complete",
                                                 "params" to mapOf("id" to "\$row.id"),
-                                                "confirm" to "Mark this task as done?"
+                                                "confirm" to "{{demo.tasks.complete.confirm}}"
                                             )
                                         ),
                                         "columns" to listOf(
-                                            mapOf("key" to "title", "label" to "Title", "sortable" to true),
-                                            mapOf("key" to "status", "label" to "Status", "render" to "badge", "badge" to mapOf("tones" to mapOf("open" to "amber", "done" to "green"))),
-                                            mapOf("key" to "boardId", "label" to "Board")
+                                            mapOf("key" to "title", "label" to "{{demo.tasks.col.title}}", "sortable" to true),
+                                            mapOf("key" to "status", "label" to "{{demo.tasks.col.status}}", "render" to "badge", "badge" to mapOf("tones" to mapOf("open" to "amber", "done" to "green"))),
+                                            mapOf("key" to "boardId", "label" to "{{demo.tasks.col.board}}")
                                         )
                                     )
                                 ),
@@ -278,12 +284,12 @@ class DemoPlugin : Plugin() {
                                     "type" to "Form",
                                     "config" to mapOf(
                                         "command" to "demo.create",
-                                        "submitLabel" to "Create Task",
+                                        "submitLabel" to "{{demo.tasks.create.submit}}",
                                         "fields" to listOf(
-                                            mapOf("name" to "title", "label" to "Title", "type" to "text", "required" to true, "minLength" to 3),
+                                            mapOf("name" to "title", "label" to "{{demo.tasks.field.title}}", "type" to "text", "required" to true, "minLength" to 3),
                                             mapOf(
                                                 "name" to "boardId",
-                                                "label" to "Board",
+                                                "label" to "{{demo.tasks.field.board}}",
                                                 "type" to "select",
                                                 "options" to mapOf(
                                                     "command" to "demo.listboards",
@@ -291,7 +297,7 @@ class DemoPlugin : Plugin() {
                                                     "labelKey" to "name"
                                                 )
                                             ),
-                                            mapOf("name" to "description", "label" to "Description", "type" to "textarea", "rows" to 3)
+                                            mapOf("name" to "description", "label" to "{{demo.tasks.field.description}}", "type" to "textarea", "rows" to 3)
                                         )
                                     )
                                 )
@@ -304,9 +310,11 @@ class DemoPlugin : Plugin() {
         context.registerUi(
             UiComponent(
                 "Navigation",
-                mapOf("id" to "nav-tasks", "label" to "Tasks", "pageId" to "tasks", "order" to 2)
+                mapOf("id" to "nav-tasks", "label" to "{{demo.page.tasks}}", "pageId" to "tasks", "order" to 2, "group" to "{{demo.nav.group.overview}}", "icon" to "☑")
             )
         )
+
+        registerEditorPages(context)
 
         context.registerUi(
             UiComponent(
@@ -375,7 +383,7 @@ class DemoPlugin : Plugin() {
                     "event" to "object.changed",
                     "filter" to mapOf("entityType" to "demo.board"),
                     "action" to "toast",
-                    "params" to mapOf("message" to "Board data changed")
+                    "params" to mapOf("message" to "{{demo.toast.boardChanged}}")
                 )
             )
         )
@@ -386,8 +394,282 @@ class DemoPlugin : Plugin() {
                     "id" to "toast-project-opened",
                     "event" to "project.event",
                     "action" to "toast",
-                    "params" to mapOf("message" to "Project opened")
+                    "params" to mapOf("message" to "{{demo.toast.projectOpened}}")
                 )
+            )
+        )
+        context.registerUi(
+            UiComponent(
+                "Overlay",
+                mapOf(
+                    "id" to "task-row-menu",
+                    "kind" to "menu",
+                    "items" to listOf(
+                        mapOf(
+                            "label" to "{{demo.tasks.menu.complete}}",
+                            "icon" to "✓",
+                            "command" to "demo.complete",
+                            "params" to mapOf("id" to "\$row.id"),
+                            "confirm" to "{{demo.tasks.complete.confirm}}"
+                        ),
+                        mapOf(
+                            "label" to "{{demo.tasks.menu.delete}}",
+                            "icon" to "✕",
+                            "command" to "demo.delete",
+                            "params" to mapOf("id" to "\$row.id"),
+                            "confirm" to "{{demo.tasks.menu.delete.confirm}}",
+                            "danger" to true
+                        ),
+                        mapOf("divider" to true),
+                        mapOf(
+                            "label" to "{{demo.tasks.menu.copy}}",
+                            "icon" to "⧉",
+                            "spec" to mapOf("action" to "copyToClipboard", "value" to "\$row.title")
+                        ),
+                        mapOf(
+                            "label" to "{{demo.tasks.menu.modal}}",
+                            "icon" to "▣",
+                            "spec" to mapOf("action" to "openModal", "overlay" to "task-details-modal")
+                        )
+                    )
+                )
+            )
+        )
+        context.registerUi(
+            UiComponent(
+                "Overlay",
+                mapOf(
+                    "id" to "task-details-modal",
+                    "kind" to "modal",
+                    "title" to "{{demo.tasks.details.title}}",
+                    "width" to "min(90vw, 28rem)",
+                    "content" to mapOf(
+                        "type" to "Text",
+                        "config" to mapOf(
+                            "text" to "{{demo.tasks.details.text}}"
+                        )
+                    )
+                )
+            )
+        )
+        context.registerUi(
+            UiComponent(
+                "OverlayTrigger",
+                mapOf(
+                    "event" to "contextmenu",
+                    "componentType" to "Table",
+                    "objectType" to "demo.task",
+                    "overlay" to "task-row-menu"
+                )
+            )
+        )
+        context.registerUi(
+            UiComponent(
+                "Overlay",
+                mapOf(
+                    "id" to "diagram-node-menu",
+                    "kind" to "menu",
+                    "items" to listOf(
+                        mapOf(
+                            "label" to "{{demo.diagram.menu.duplicate}}",
+                            "icon" to "⧉",
+                            "spec" to mapOf(
+                                "action" to "editor",
+                                "editor" to "diagram",
+                                "command" to "duplicate",
+                                "params" to mapOf("id" to "\$row.id")
+                            )
+                        ),
+                        mapOf("divider" to true),
+                        mapOf(
+                            "label" to "{{demo.diagram.menu.delete}}",
+                            "icon" to "✕",
+                            "spec" to mapOf(
+                                "action" to "editor",
+                                "editor" to "diagram",
+                                "command" to "delete",
+                                "params" to mapOf("id" to "\$row.id")
+                            ),
+                            "confirm" to "{{demo.diagram.menu.delete.confirm}}",
+                            "danger" to true
+                        )
+                    )
+                )
+            )
+        )
+        context.registerUi(
+            UiComponent(
+                "OverlayTrigger",
+                mapOf(
+                    "event" to "contextmenu",
+                    "objectType" to "diagram.node",
+                    "overlay" to "diagram-node-menu"
+                )
+            )
+        )
+    }
+
+    private fun registerEditorPages(context: PluginContext) {
+        context.registerUi(
+            UiComponent(
+                "Page",
+                mapOf(
+                    "id" to "docs",
+                    "title" to "{{demo.page.docs}}",
+                    "sections" to listOf(
+                        mapOf(
+                            "id" to "docs-editor",
+                            "layout" to "grid",
+                            "columns" to 1,
+                            "components" to listOf(
+                                mapOf(
+                                    "type" to "richtext",
+                                    "config" to mapOf(
+                                        "content" to mapOf("command" to "demo.loaddocument", "params" to mapOf("id" to DOC_NOTES)),
+                                        "save" to mapOf("command" to "demo.savedocument", "params" to mapOf("id" to DOC_NOTES, "title" to "Notes")),
+                                        "height" to "70vh",
+                                        "placeholder" to "{{demo.docs.placeholder}}",
+                                        "toolbar" to listOf(
+                                            "undo", "redo", "heading1", "heading2", "heading3",
+                                            "bold", "italic", "underline", "strike", "code",
+                                            "bulletList", "orderedList", "taskList",
+                                            "blockquote", "codeBlock", "link", "image", "table"
+                                        ),
+                                        "extensions" to listOf(
+                                            mapOf("name" to "placeholder"),
+                                            mapOf("name" to "link"),
+                                            mapOf("name" to "image"),
+                                            mapOf("name" to "task"),
+                                            mapOf("name" to "table"),
+                                            mapOf("name" to "heading")
+                                        ),
+                                        "mentions" to mapOf("command" to "demo.mentions")
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        )
+        context.registerUi(
+            UiComponent(
+                "Page",
+                mapOf(
+                    "id" to "diagram",
+                    "title" to "{{demo.page.diagram}}",
+                    "sections" to listOf(
+                        mapOf(
+                            "id" to "diagram-editor",
+                            "layout" to "grid",
+                            "columns" to 1,
+                            "components" to listOf(
+                                mapOf(
+                                    "type" to "diagram",
+                                    "config" to mapOf(
+                                        "id" to "diagram-editor",
+                                        "content" to mapOf("command" to "demo.loaddocument", "params" to mapOf("id" to DOC_DIAGRAM)),
+                                        "save" to mapOf("command" to "demo.savedocument", "params" to mapOf("id" to DOC_DIAGRAM, "title" to "Diagram")),
+                                        "height" to "70vh",
+                                        "grid" to true,
+                                        "panning" to true,
+                                        "mousewheel" to true,
+                                        "layout" to mapOf("gapX" to 40, "gapY" to 40),
+                                        "toolbar" to listOf("addRect", "addEllipse", "addEdge", "layout", "fit", "delete")
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        )
+        context.registerUi(
+            UiComponent(
+                "Page",
+                mapOf(
+                    "id" to "scene",
+                    "title" to "{{demo.page.scene}}",
+                    "sections" to listOf(
+                        mapOf(
+                            "id" to "scene-editor",
+                            "layout" to "grid",
+                            "columns" to 1,
+                            "components" to listOf(
+                                mapOf(
+                                    "type" to "scene3d",
+                                    "config" to mapOf(
+                                        "content" to mapOf("command" to "demo.loaddocument", "params" to mapOf("id" to DOC_SCENE)),
+                                        "save" to mapOf("command" to "demo.savedocument", "params" to mapOf("id" to DOC_SCENE, "title" to "Scene")),
+                                        "height" to "70vh",
+                                        "background" to "#eef2f7",
+                                        "grid" to true,
+                                        "autoRotate" to false,
+                                        "camera" to mapOf("fov" to 50, "position" to listOf(4, 3.5, 5), "target" to listOf(0, 0, 0)),
+                                        "lights" to mapOf("ambient" to mapOf("intensity" to 0.7), "directional" to mapOf("intensity" to 1.2, "position" to listOf(5, 8, 6))),
+                                        "toolbar" to listOf("addBox", "addSphere", "addCylinder", "delete", "resetCamera")
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        )
+        context.registerUi(
+            UiComponent(
+                "Page",
+                mapOf(
+                    "id" to "board",
+                    "title" to "{{demo.page.board}}",
+                    "sections" to listOf(
+                        mapOf(
+                            "id" to "board-editor",
+                            "layout" to "grid",
+                            "columns" to 1,
+                            "components" to listOf(
+                                mapOf(
+                                    "type" to "canvas2d",
+                                    "config" to mapOf(
+                                        "content" to mapOf("command" to "demo.loaddocument", "params" to mapOf("id" to DOC_BOARD)),
+                                        "save" to mapOf("command" to "demo.savedocument", "params" to mapOf("id" to DOC_BOARD, "title" to "Whiteboard")),
+                                        "height" to "70vh",
+                                        "grid" to true,
+                                        "colors" to listOf("#111827", "#ef4444", "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6"),
+                                        "widths" to listOf(2, 4, 8),
+                                        "tool" to "draw",
+                                        "toolbar" to listOf("select", "pan", "draw", "erase", "rect", "ellipse", "line", "arrow", "front", "back", "clear")
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        )
+
+        context.registerUi(
+            UiComponent(
+                "Navigation",
+                mapOf("id" to "nav-docs", "label" to "{{demo.page.docs}}", "pageId" to "docs", "order" to 3, "group" to "{{demo.nav.group.editors}}", "icon" to "✎")
+            )
+        )
+        context.registerUi(
+            UiComponent(
+                "Navigation",
+                mapOf("id" to "nav-diagram", "label" to "{{demo.page.diagram}}", "pageId" to "diagram", "order" to 4, "group" to "{{demo.nav.group.editors}}", "icon" to "◫")
+            )
+        )
+        context.registerUi(
+            UiComponent(
+                "Navigation",
+                mapOf("id" to "nav-scene", "label" to "{{demo.page.scene}}", "pageId" to "scene", "order" to 5, "group" to "{{demo.nav.group.editors}}", "icon" to "◈")
+            )
+        )
+        context.registerUi(
+            UiComponent(
+                "Navigation",
+                mapOf("id" to "nav-board", "label" to "{{demo.page.board}}", "pageId" to "board", "order" to 6, "group" to "{{demo.nav.group.editors}}", "icon" to "✏")
             )
         )
     }

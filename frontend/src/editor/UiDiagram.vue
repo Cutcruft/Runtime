@@ -1,0 +1,500 @@
+<script setup lang="ts">
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { Graph, Node, Cell } from '@antv/x6'
+import { Selection } from '@antv/x6-plugin-selection'
+import { Snapline } from '@antv/x6-plugin-snapline'
+import '@antv/x6/dist/index.css'
+import { sessionStore } from '../store/session'
+import { i18nStore } from '../store/i18n'
+import { toasts } from '../store/toasts'
+import { useCfg } from '../renderer/useConfig'
+import { useData } from '../renderer/useData'
+import { resolveParams } from '../renderer/bindingEngine'
+import { overlayService } from '../overlay/overlayService'
+import { subscribeEvent } from '../events/eventBus'
+import type {
+  BindingContext,
+  DiagramConfig,
+  DiagramContent,
+  DiagramEdgeSpec,
+  DiagramNodeSpec,
+  DiagramToolbarButton
+} from '../protocol/componentSpec'
+
+const props = defineProps<{ config: Record<string, unknown>; context?: BindingContext }>()
+
+const t = i18nStore.t
+
+const cfg = useCfg<DiagramConfig>(props.config, {
+  grid: true,
+  panning: true,
+  mousewheel: false,
+  snap: true
+})
+
+const hostEl = ref<HTMLElement | null>(null)
+const graph = ref<Graph | null>(null)
+
+const componentId = computed(() => cfg.value.id)
+
+const editable = computed(() => !cfg.value.readonly && cfg.value.disabled !== true)
+const height = computed(() => cfg.value.height)
+
+const data = computed(() => cfg.value.content)
+const { value, error } = useData(
+  () => data.value,
+  () => props.context ?? {}
+)
+
+let loaded = false
+let edgeMode = false
+let edgeSource: Node | null = null
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+let unsubEditorCommands: (() => void) | null = null
+
+const BODY_DEFAULTS = { rx: 6, ry: 6, strokeWidth: 1.5 }
+const LABEL_DEFAULTS = { fontSize: 13, fontFamily: 'system-ui, sans-serif' }
+
+const toolbarButtons: DiagramToolbarButton[] = ['addRect', 'addEllipse', 'addEdge', 'delete', 'fit']
+
+const toolbar = computed(() => (cfg.value.toolbar === false ? [] : (cfg.value.toolbar ?? toolbarButtons)))
+
+function nodeSpec(n: Node): DiagramNodeSpec {
+  const spec: DiagramNodeSpec = {
+    id: n.id,
+    x: n.position().x,
+    y: n.position().y,
+    width: n.size().width,
+    height: n.size().height
+  }
+  const shape = n.shape as string
+  if (shape === 'image') {
+    spec.shape = 'image'
+    spec.imageUrl = (n.attr('image/xlink:href') as string | undefined) ?? undefined
+  } else {
+    spec.shape = shape === 'ellipse' ? 'ellipse' : 'rect'
+    spec.label = (n.attr('label/text') as string | undefined) ?? undefined
+    spec.fill = (n.attr('body/fill') as string | undefined) ?? undefined
+    spec.stroke = (n.attr('body/stroke') as string | undefined) ?? undefined
+    spec.color = (n.attr('label/fill') as string | undefined) ?? undefined
+  }
+  return spec
+}
+
+function contentFor(): string {
+  if (!graph.value) return ''
+  const content: DiagramContent = {
+    nodes: graph.value.getNodes().map(nodeSpec),
+    edges: graph.value
+      .getEdges()
+      .map((edge): DiagramEdgeSpec => {
+        const source = edge.getSourceCell()
+        const target = edge.getTargetCell()
+        return {
+          id: edge.id,
+          source: source instanceof Node ? source.id : (edge.getSourceCellId() ?? ''),
+          target: target instanceof Node ? target.id : (edge.getTargetCellId() ?? ''),
+          label: (edge.attr('label/text') as string | undefined) ?? undefined,
+          color: (edge.attr('line/stroke') as string | undefined) ?? undefined
+        }
+      })
+  }
+  return JSON.stringify(content)
+}
+
+function scheduleSave(): void {
+  if (!editable.value || !cfg.value.save?.command) return
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => {
+    void save()
+  }, 600)
+}
+
+async function save(): Promise<void> {
+  if (!cfg.value.save?.command) return
+  const payload = { ...(cfg.value.save.params ?? {}), content: contentFor() }
+  try {
+    await sessionStore.executeCommand(cfg.value.save.command, resolveParams(payload, props.context ?? {}))
+    toasts.push({ message: t('core.editor.saved'), kind: 'success' })
+  } catch {
+    /* error toast shown by session store */
+  }
+}
+
+function buildNode(spec: DiagramNodeSpec): Record<string, unknown> {
+  const width = spec.width ?? 140
+  const height = spec.height ?? 48
+  if (spec.shape === 'image') {
+    return {
+      id: spec.id,
+      shape: 'image',
+      x: spec.x,
+      y: spec.y,
+      width,
+      height,
+      attrs: {
+        image: {
+          'xlink:href': spec.imageUrl ?? '',
+          width,
+          height,
+          magnet: true
+        }
+      }
+    }
+  }
+  return {
+    id: spec.id,
+    shape: spec.shape === 'ellipse' ? 'ellipse' : 'rect',
+    x: spec.x,
+    y: spec.y,
+    width,
+    height,
+    attrs: {
+      body: {
+        ...BODY_DEFAULTS,
+        fill: spec.fill ?? (spec.shape === 'ellipse' ? '#eef4ff' : '#f6f8fb'),
+        stroke: spec.stroke ?? '#94a3b8',
+        magnet: true
+      },
+      label: {
+        ...LABEL_DEFAULTS,
+        text: spec.label ?? '',
+        fill: spec.color ?? '#1e293b'
+      }
+    }
+  }
+}
+
+function buildEdge(spec: DiagramEdgeSpec): Record<string, unknown> {
+  const router = spec.line && spec.line !== 'rounded' ? { name: spec.line } : undefined
+  const connector = spec.line === 'manhattan' || spec.line === 'metro' ? { name: 'rounded' } : { name: spec.line ?? 'rounded' }
+  return {
+    id: spec.id,
+    source: spec.source,
+    target: spec.target,
+    router,
+    connector,
+    attrs: {
+      line: { stroke: spec.color ?? '#64748b', strokeWidth: 2 },
+      label: { text: spec.label ?? '', fontSize: 12 }
+    }
+  }
+}
+
+function loadContent(content: DiagramContent): void {
+  if (!graph.value) return
+  graph.value.clearCells()
+  for (const spec of content.nodes ?? []) {
+    graph.value.addNode(buildNode(spec))
+  }
+  for (const spec of content.edges ?? []) {
+    graph.value.addEdge(buildEdge(spec))
+  }
+  if (content.nodes?.length) {
+    graph.value.zoomToFit({ padding: 24, maxScale: 1.5 })
+  }
+}
+
+watch(
+  () => value.value,
+  (next) => {
+    if (next == null || loaded) return
+    if (!graph.value) return
+    try {
+      loadContent(JSON.parse(String(next)) as DiagramContent)
+      loaded = true
+    } catch {
+      /* invalid content, keep empty graph */
+    }
+  }
+)
+
+function addNode(shape: 'rect' | 'ellipse'): void {
+  if (!graph.value || !editable.value) return
+  const base = {
+    x: 60 + Math.round(Math.random() * 180),
+    y: 60 + Math.round(Math.random() * 120),
+    width: 140,
+    height: 48
+  }
+  const spec: DiagramNodeSpec = {
+    id: `${shape}_${Date.now()}`,
+    shape,
+    ...base,
+    label: shape === 'ellipse' ? 'Ellipse' : 'Rectangle'
+  }
+  graph.value.addNode(buildNode(spec))
+  scheduleSave()
+}
+
+function startAddEdge(): void {
+  if (!graph.value || !editable.value) return
+  edgeMode = true
+  edgeSource = null
+  toasts.push({ message: t('core.editor.diagram.pickSource'), kind: 'info' })
+}
+
+function deleteSelected(): void {
+  if (!graph.value || !editable.value) return
+  graph.value.getSelectedCells().forEach((cell) => cell.remove())
+  scheduleSave()
+}
+
+function duplicateCell(cell: Cell): void {
+  if (!graph.value) return
+  if (cell instanceof Node) {
+    const position = cell.position()
+    graph.value.addNode(
+      buildNode({
+        ...nodeSpec(cell),
+        id: `${cell.shape}_${Date.now()}`,
+        x: position.x + 24,
+        y: position.y + 24
+      })
+    )
+  }
+}
+
+interface EditorCommandPayload {
+  editor?: string
+  command?: string
+  componentId?: string
+  params?: Record<string, unknown>
+}
+
+function handleEditorCommand(payload: EditorCommandPayload): void {
+  if (payload.editor !== 'diagram') return
+  if (payload.componentId && payload.componentId !== componentId.value) return
+  if (!graph.value || !editable.value) return
+  const id = payload.params?.id as string | undefined
+  const cell = id ? graph.value.getCellById(id) : null
+  if (!cell) return
+  switch (payload.command) {
+    case 'delete':
+      cell.remove()
+      scheduleSave()
+      break
+    case 'duplicate':
+      duplicateCell(cell)
+      scheduleSave()
+      break
+    case 'front':
+      cell.toFront()
+      scheduleSave()
+      break
+    case 'back':
+      cell.toBack()
+      scheduleSave()
+      break
+  }
+}
+
+function fitView(): void {
+  graph.value?.zoomToFit({ padding: 24, maxScale: 2 })
+}
+
+function layoutGrid(): void {
+  if (!graph.value || !editable.value) return
+  const nodes = graph.value.getNodes()
+  if (nodes.length === 0) return
+  const sorted = [...nodes].sort((a, b) => {
+    const pa = a.position()
+    const pb = b.position()
+    return pa.y - pb.y || pa.x - pb.x
+  })
+  const cols = Math.max(1, Math.ceil(Math.sqrt(nodes.length)))
+  const gapX = cfg.value.layout?.gapX ?? 40
+  const gapY = cfg.value.layout?.gapY ?? 40
+  const colWidth = Math.max(...sorted.map((n) => n.size().width)) + gapX
+  const rowHeight = Math.max(...sorted.map((n) => n.size().height)) + gapY
+  sorted.forEach((n, i) => {
+    const col = i % cols
+    const row = Math.floor(i / cols)
+    n.position(col * colWidth, row * rowHeight)
+  })
+  scheduleSave()
+}
+
+function setupGraph(): void {
+  const container = hostEl.value
+  if (!container) return
+  const g = new Graph({
+    container,
+    grid: cfg.value.grid ? { size: 10, visible: true } : false,
+    panning: cfg.value.panning ? { enabled: true, eventTypes: ['leftMouseDown', 'mouseWheel'] } : false,
+    mousewheel: cfg.value.mousewheel ? { enabled: true, modifiers: ['ctrl', 'meta'], minScale: 0.2, maxScale: 3 } : false,
+    interacting: () => editable.value,
+    connecting: {
+      snap: true,
+      allowBlank: false,
+      allowLoop: false,
+      allowNode: true,
+      router: { name: 'manhattan' },
+      connector: { name: 'rounded' },
+      connectionPoint: 'boundary'
+    },
+    background: { color: '#ffffff' }
+  })
+
+  g.use(new Selection({ enabled: editable.value, multiple: true, rubberband: true }))
+  g.use(new Snapline({ enabled: true }))
+
+  g.on('cell:click', () => {
+    if (!edgeMode || !edgeSource) return
+    const target = g.getSelectedCells().find((c): c is Node => c instanceof Node)
+    if (target && target.id !== edgeSource.id) {
+      g.addEdge(
+        buildEdge({ source: edgeSource.id, target: target.id, line: 'rounded' })
+      )
+      edgeMode = false
+      edgeSource = null
+      scheduleSave()
+      toasts.push({ message: t('core.editor.diagram.edgeAdded'), kind: 'success' })
+    }
+  })
+
+  g.on('blank:click', () => {
+    edgeMode = false
+    edgeSource = null
+  })
+
+  g.on('node:mousedown', (arg) => {
+    if (edgeMode) {
+      edgeSource = arg.node
+      toasts.push({ message: t('core.editor.diagram.pickTarget'), kind: 'info' })
+    }
+  })
+
+  g.on('node:contextmenu', ({ node, e }) => {
+    const mouse = e as unknown as MouseEvent
+    const opened = overlayService.onGesture({
+      event: 'contextmenu',
+      componentType: 'Diagram',
+      objectType: 'diagram.node',
+      componentId: componentId.value,
+      row: { id: node.id, label: (node.attr('label/text') as string | undefined) ?? node.id },
+      x: mouse.clientX,
+      y: mouse.clientY
+    })
+    if (opened) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+  })
+
+  g.on('cell:added', () => scheduleSave())
+  g.on('cell:removed', () => scheduleSave())
+  g.on('cell:change:position', () => scheduleSave())
+  g.on('cell:change:size', () => scheduleSave())
+  g.on('cell:change:attrs', () => scheduleSave())
+  g.on('edge:connected', () => scheduleSave())
+
+  graph.value = g
+
+  if (value.value != null) {
+    try {
+      loadContent(JSON.parse(String(value.value)) as DiagramContent)
+      loaded = true
+    } catch {
+      /* invalid content, keep empty graph */
+    }
+  }
+}
+
+onMounted(() => {
+  nextTick(setupGraph)
+  if (error.value) toasts.push({ message: error.value, kind: 'error' })
+  unsubEditorCommands = subscribeEvent((event) => {
+    if (event.kind === 'editor.command') handleEditorCommand(event.payload as EditorCommandPayload)
+  })
+})
+
+onBeforeUnmount(() => {
+  if (saveTimer) clearTimeout(saveTimer)
+  unsubEditorCommands?.()
+  graph.value?.dispose()
+  graph.value = null
+})
+
+const toolbarMeta: Record<DiagramToolbarButton, { label: string; icon: string; action: () => void; active?: () => boolean }> = {
+  addRect: { label: t('core.editor.diagram.addRect'), icon: '▭', action: () => addNode('rect') },
+  addEllipse: { label: t('core.editor.diagram.addEllipse'), icon: '◯', action: () => addNode('ellipse') },
+  addEdge: {
+    label: t('core.editor.diagram.addEdge'),
+    icon: '↔',
+    action: () => startAddEdge(),
+    active: () => edgeMode
+  },
+  delete: { label: t('core.editor.diagram.delete'), icon: '✕', action: () => deleteSelected() },
+  fit: { label: t('core.editor.diagram.fit'), icon: '⛶', action: () => fitView() },
+  layout: { label: t('core.editor.diagram.layout'), icon: '▦', action: () => layoutGrid() }
+}
+</script>
+
+<template>
+  <div class="ui-diagram" :style="height ? { height } : undefined" data-gesture-type="Diagram">
+    <div v-if="toolbar.length" class="ui-diagram__toolbar">
+      <button
+        v-for="name in toolbar"
+        :key="name"
+        class="ui-diagram__btn"
+        :class="{ 'ui-diagram__btn--active': toolbarMeta[name]?.active?.(), 'ui-diagram__btn--disabled': !editable }"
+        :title="toolbarMeta[name]?.label"
+        @click="toolbarMeta[name]?.action()"
+      >
+        {{ toolbarMeta[name]?.icon }}
+      </button>
+    </div>
+    <div class="ui-diagram__canvas" :class="{ 'ui-diagram__canvas--readonly': !editable }" ref="hostEl"></div>
+  </div>
+</template>
+
+<style scoped>
+.ui-diagram {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--rt-color-border);
+  border-radius: var(--rt-radius);
+  background: #fff;
+  overflow: hidden;
+}
+.ui-diagram__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.125rem;
+  padding: 0.375rem;
+  border-bottom: 1px solid var(--rt-color-border);
+  background: var(--rt-color-bg);
+}
+.ui-diagram__btn {
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding: 0 0.35rem;
+  border: none;
+  border-radius: var(--rt-radius-sm);
+  background: transparent;
+  color: var(--rt-color-text);
+  font-size: var(--rt-font-size-sm);
+  cursor: pointer;
+}
+.ui-diagram__btn:hover {
+  background: var(--rt-color-primary-soft, rgba(0, 0, 0, 0.06));
+}
+.ui-diagram__btn--active {
+  background: var(--rt-color-primary);
+  color: var(--rt-color-on-primary);
+}
+.ui-diagram__btn--disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.ui-diagram__canvas {
+  flex: 1;
+  min-height: 0;
+}
+.ui-diagram__canvas :deep(.x6-graph) {
+  width: 100%;
+  height: 100%;
+}
+</style>

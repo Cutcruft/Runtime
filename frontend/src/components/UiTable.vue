@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { sessionStore } from '../store/session'
+import { i18nStore } from '../store/i18n'
 import { useCfg } from '../renderer/useConfig'
 import { useData } from '../renderer/useData'
 import { findAction, resolveParams, runAction } from '../renderer/bindingEngine'
@@ -15,6 +16,8 @@ import type {
 } from '../protocol/componentSpec'
 
 const props = defineProps<{ config: Record<string, unknown>; context?: BindingContext }>()
+
+const t = i18nStore.t
 
 const cfg = useCfg<TableConfig>(props.config, {
   showRefresh: true,
@@ -210,13 +213,13 @@ const showDeleteColumn = computed(() => legacyDelete.value || Boolean(findAction
         v-model="searchText"
         class="ui-table__search"
         type="search"
-        placeholder="Search…"
+        :placeholder="t('core.table.search')"
       />
       <span v-if="cfg.showRowCount" class="ui-table__count">
-        {{ allRows.length }} {{ allRows.length === 1 ? 'row' : 'rows' }}
+        {{ t('core.table.rows', { count: allRows.length }) }}
       </span>
       <button v-if="cfg.showRefresh" class="ui-button ui-button--small" :disabled="loading" @click="reload">
-        {{ loading ? 'Loading…' : 'Refresh' }}
+        {{ loading ? t('core.button.loading') : t('core.table.refresh') }}
       </button>
     </div>
 
@@ -241,18 +244,21 @@ const showDeleteColumn = computed(() => legacyDelete.value || Boolean(findAction
       <tbody>
         <tr v-if="loading && visibleRows.length === 0">
           <td :colspan="columns.length + (cfg.selectable ? 1 : 0) + (rowActionCount > 0 ? 1 : 0)" class="ui-table__state">
-            Loading…
+            {{ t('core.button.loading') }}
           </td>
         </tr>
         <tr v-else-if="visibleRows.length === 0">
           <td :colspan="columns.length + (cfg.selectable ? 1 : 0) + (rowActionCount > 0 ? 1 : 0)" class="ui-table__state">
-            {{ cfg.emptyText ?? 'No data' }}
+            {{ cfg.emptyText ?? t('core.table.empty') }}
           </td>
         </tr>
         <tr
           v-for="(row, index) in visibleRows"
           :key="rowKey(row, index)"
           class="ui-table__row"
+          data-gesture-role="row"
+          :data-gesture-object-type="data?.entityType ?? undefined"
+          :data-gesture-row="JSON.stringify(row)"
           @click="onRowClick(row)"
         >
           <td v-if="cfg.selectable" class="ui-table__checkbox-col">
@@ -286,9 +292,8 @@ const showDeleteColumn = computed(() => legacyDelete.value || Boolean(findAction
               class="ui-button ui-button--small ui-button--danger"
               @click="deleteRow(row)"
             >
-              Delete
-            </button>
-          </td>
+              {{ t('core.table.delete') }}
+            </button>          </td>
         </tr>
       </tbody>
     </table>

@@ -1,28 +1,83 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { configStore } from '../store/config'
+import { i18nStore } from '../store/i18n'
 import { sessionStore } from '../store/session'
+import { pageStore } from '../store/page'
 import type { CommandEntry } from '../protocol/types'
 
+const t = i18nStore.t
+const tr = i18nStore.tr
 const open = ref(false)
 const query = ref('')
 const selectedIndex = ref(0)
 
-const commands = computed(() => configStore.commands)
+interface PaletteItem {
+  kind: 'command' | 'page'
+  id: string
+  description: string
+  icon?: string
+  pageId?: string
+  command?: CommandEntry
+  group?: string
+}
+
+interface PaletteGroup {
+  label: string
+  items: PaletteItem[]
+}
+
+const groups = computed<PaletteGroup[]>(() => {
+  const pages: PaletteItem[] = configStore.pages.map((page) => ({
+    kind: 'page',
+    id: `page:${page.id}`,
+    description: tr(page.title),
+    icon: '◈',
+    pageId: page.id
+  }))
+  const byGroup = new Map<string, PaletteItem[]>()
+  for (const command of configStore.commands) {
+    const group = command.group ?? 'Commands'
+    if (!byGroup.has(group)) byGroup.set(group, [])
+    byGroup.get(group)!.push({ kind: 'command', id: command.id, description: command.description, group, command })
+  }
+  const commandGroups = Array.from(byGroup.entries()).map(([label, items]) => ({ label, items }))
+  return [{ label: 'Pages', items: pages }, ...commandGroups].filter((g) => g.items.length > 0)
+})
+
+const flatItems = computed(() => groups.value.flatMap((group) => group.items))
 
 const filtered = computed(() => {
   const q = query.value.trim().toLowerCase()
-  if (!q) return commands.value
-  return commands.value.filter(
-    (c) => c.id.toLowerCase().includes(q) || c.description.toLowerCase().includes(q)
-  )
+  if (!q) return groups.value
+  return groups.value
+    .map((group) => ({
+      label: group.label,
+      items: group.items.filter(
+        (item) => item.id.toLowerCase().includes(q) || item.description.toLowerCase().includes(q)
+      )
+    }))
+    .filter((group) => group.items.length > 0)
 })
 
-function execute(command: CommandEntry): void {
+function execute(item: PaletteItem): void {
   open.value = false
-  sessionStore.executeCommand(command.id, {}).catch(() => {
-    /* error toast already shown */
-  })
+  if (item.kind === 'page' && item.pageId) {
+    pageStore.openPage(item.pageId)
+  } else if (item.command) {
+    sessionStore.executeCommand(item.command.id, {}).catch(() => {
+      /* error toast already shown */
+    })
+  }
+}
+
+function flatIndex(group: PaletteGroup, index: number): number {
+  let offset = 0
+  for (const g of filtered.value) {
+    if (g === group) return offset + index
+    offset += g.items.length
+  }
+  return index
 }
 
 function onKeydown(event: KeyboardEvent): void {
@@ -40,7 +95,7 @@ function onKeydown(event: KeyboardEvent): void {
   }
   if (event.key === 'ArrowDown') {
     event.preventDefault()
-    selectedIndex.value = Math.min(selectedIndex.value + 1, filtered.value.length - 1)
+    selectedIndex.value = Math.min(selectedIndex.value + 1, flatItems.value.length - 1)
     return
   }
   if (event.key === 'ArrowUp') {
@@ -48,9 +103,9 @@ function onKeydown(event: KeyboardEvent): void {
     selectedIndex.value = Math.max(selectedIndex.value - 1, 0)
     return
   }
-  if (event.key === 'Enter' && filtered.value.length > 0) {
+  if (event.key === 'Enter' && flatItems.value.length > 0) {
     event.preventDefault()
-    execute(filtered.value[selectedIndex.value])
+    execute(flatItems.value[selectedIndex.value])
   }
 }
 
@@ -64,21 +119,26 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
       <input
         v-model="query"
         class="palette__input"
-        placeholder="Search commands…"
+        :placeholder="t('core.palette.placeholder')"
         autofocus
       />
       <ul class="palette__list">
-        <li
-          v-for="(command, index) in filtered"
-          :key="command.id"
-          class="palette__item"
-          :class="{ 'palette__item--active': index === selectedIndex }"
-          @click="execute(command)"
-        >
-          <code class="palette__id">{{ command.id }}</code>
-          <span class="palette__description">{{ command.description }}</span>
-        </li>
-        <li v-if="filtered.length === 0" class="palette__empty">No commands found</li>
+        <template v-for="group in filtered" :key="group.label">
+          <li class="palette__group">{{ group.label }}</li>
+          <li
+            v-for="(item, index) in group.items"
+            :key="item.id"
+            class="palette__item"
+            :class="{ 'palette__item--active': flatIndex(group, index) === selectedIndex }"
+            @click="execute(item)"
+          >
+            <span v-if="item.icon" class="palette__icon">{{ item.icon }}</span>
+            <code v-if="item.kind === 'command'" class="palette__id">{{ item.id }}</code>
+            <span v-else class="palette__id palette__id--page">{{ item.id.replace(/^page:/, '') }}</span>
+            <span class="palette__description">{{ item.description }}</span>
+          </li>
+        </template>
+        <li v-if="flatItems.length === 0" class="palette__empty">{{ t('core.palette.empty') }}</li>
       </ul>
     </div>
   </div>
@@ -97,9 +157,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 }
 .palette {
   width: min(36rem, 90vw);
-  background: #fff;
+  background: var(--rt-color-surface);
   border-radius: 10px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--rt-shadow);
   overflow: hidden;
 }
 .palette__input {
@@ -107,9 +167,11 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   box-sizing: border-box;
   padding: 0.9rem 1rem;
   border: none;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--rt-color-border);
   font-size: 1rem;
   outline: none;
+  background: var(--rt-color-surface);
+  color: var(--rt-color-text);
 }
 .palette__list {
   list-style: none;
@@ -117,6 +179,14 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   padding: 0.5rem;
   max-height: 40vh;
   overflow-y: auto;
+}
+.palette__group {
+  padding: 0.5rem 0.75rem 0.25rem;
+  font-size: var(--rt-font-size-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--rt-color-muted);
 }
 .palette__item {
   display: flex;
@@ -127,16 +197,24 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   cursor: pointer;
 }
 .palette__item--active {
-  background: #eef4ff;
+  background: var(--rt-color-bg);
+}
+.palette__icon {
+  width: 1.1rem;
+  text-align: center;
+  color: var(--rt-color-muted);
 }
 .palette__id {
   font-family: monospace;
   font-size: 0.85rem;
-  color: #0066cc;
+  color: var(--rt-color-primary);
+}
+.palette__id--page {
+  color: var(--rt-color-muted);
 }
 .palette__description {
   font-size: 0.85rem;
-  color: #666;
+  color: var(--rt-color-muted);
 }
 .palette__empty {
   padding: 1rem;

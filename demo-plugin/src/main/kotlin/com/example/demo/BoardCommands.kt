@@ -5,7 +5,7 @@ import runtime.domain.command.CommandContext
 import runtime.domain.command.CommandResult
 import runtime.domain.obj.ObjectRef
 
-class CreateBoardCommand : Command("createboard", "Create a board") {
+class CreateBoardCommand : Command("createboard", "Create a board", "Boards") {
     override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
         val p = params as? Map<*, *> ?: return CommandResult.error("Missing parameters")
         val name = p["name"] as? String ?: return CommandResult.error("Missing name")
@@ -18,7 +18,7 @@ class CreateBoardCommand : Command("createboard", "Create a board") {
     }
 }
 
-class ListBoardsCommand : Command("listboards", "List all boards") {
+class ListBoardsCommand : Command("listboards", "List all boards", "Boards") {
     override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
         val list = context.objectList<Board>(BOARD_TYPE)
         val rows = list.list().mapNotNull { ref ->
@@ -33,7 +33,7 @@ class ListBoardsCommand : Command("listboards", "List all boards") {
     }
 }
 
-class DeleteBoardCommand : Command("deleteboard", "Delete a board and its tasks") {
+class DeleteBoardCommand : Command("deleteboard", "Delete a board and its tasks", "Boards") {
     override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
         val p = params as? Map<*, *> ?: return CommandResult.error("Missing parameters")
         val id = parseId(p) ?: return CommandResult.error("Missing or invalid id")

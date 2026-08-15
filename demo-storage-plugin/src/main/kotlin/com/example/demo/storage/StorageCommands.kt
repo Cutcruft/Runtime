@@ -8,7 +8,7 @@ import runtime.domain.entity.EntityType
 private val BOARD_TYPE = EntityType("demo.board")
 private val TASK_TYPE = EntityType("demo.task")
 
-class ExportCommand : Command("export", "Export demo data as JSON") {
+class ExportCommand : Command("export", "Export demo data as JSON", "Storage") {
     override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
         val boards = context.objectList<Any>(BOARD_TYPE).values()
         val tasks = context.objectList<Any>(TASK_TYPE).values()
@@ -17,7 +17,7 @@ class ExportCommand : Command("export", "Export demo data as JSON") {
     }
 }
 
-class CountsCommand : Command("counts", "Count objects per entity type") {
+class CountsCommand : Command("counts", "Count objects per entity type", "Storage") {
     override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
         val boards = context.objectList<Any>(BOARD_TYPE).size()
         val tasks = context.objectList<Any>(TASK_TYPE).size()

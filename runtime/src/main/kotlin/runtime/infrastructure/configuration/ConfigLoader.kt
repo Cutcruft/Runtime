@@ -7,6 +7,7 @@ import runtime.domain.models.AppFields
 import runtime.domain.models.AuditConfig
 import runtime.domain.models.CommandConfig
 import runtime.domain.models.HttpConfig
+import runtime.domain.models.I18nConfig
 import runtime.domain.models.NavigationFields
 import runtime.domain.models.PageFields
 import runtime.domain.models.PluginsConfig
@@ -47,6 +48,7 @@ class ConfigLoader(
         val command = section(map, "command")
         val audit = section(map, "audit")
         val ui = section(map, "ui")
+        val i18n = section(map, "i18n")
         return RuntimeConfig(
             server = ServerConfig(
                 host = server["host"] as String,
@@ -77,6 +79,8 @@ class ConfigLoader(
                 appComponentType = ui["appComponentType"] as String,
                 shortcutComponentType = ui["shortcutComponentType"] as String,
                 subscriptionComponentType = ui["subscriptionComponentType"] as String,
+                overlayComponentType = ui["overlayComponentType"] as String,
+                overlayTriggerComponentType = ui["overlayTriggerComponentType"] as String,
                 app = AppConfig(
                     title = section(ui, "app")["title"] as String,
                     logo = section(ui, "app")["logo"] as? String,
@@ -86,7 +90,9 @@ class ConfigLoader(
                     id = section(ui, "navigationFields")["id"] as String,
                     label = section(ui, "navigationFields")["label"] as String,
                     pageId = section(ui, "navigationFields")["pageId"] as String,
-                    order = section(ui, "navigationFields")["order"] as String
+                    order = section(ui, "navigationFields")["order"] as String,
+                    group = section(ui, "navigationFields")["group"] as String,
+                    icon = section(ui, "navigationFields")["icon"] as String
                 ),
                 pageFields = PageFields(
                     id = section(ui, "pageFields")["id"] as String,
@@ -104,7 +110,10 @@ class ConfigLoader(
                         .entries.associate { it.key.toString() to it.value.toString() }
                 )
             ),
-            messages = section(map, "messages").mapValues { (_, value) -> value.toString() }
+            messages = section(map, "messages").mapValues { (_, value) -> value.toString() },
+            i18n = I18nConfig(
+                defaultLocale = i18n["defaultLocale"] as? String ?: "en"
+            )
         )
     }
 

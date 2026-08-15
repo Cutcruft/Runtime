@@ -1,4 +1,11 @@
-import { configStore } from '../store/config'
+import { ref } from 'vue'
+import { configStore } from './config'
+
+export type ThemeMode = 'auto' | 'light' | 'dark'
+
+const STORAGE_KEY = 'cc.theme'
+const media = window.matchMedia('(prefers-color-scheme: dark)')
+const mode = ref<ThemeMode>(loadMode())
 
 const LIGHT_TOKENS: Record<string, string> = {
   'color-bg': '#f5f6f8',
@@ -52,13 +59,47 @@ const DARK_TOKENS: Record<string, string> = {
   'font-size-xl': '1.25rem'
 }
 
+function loadMode(): ThemeMode {
+  const stored = localStorage.getItem(STORAGE_KEY)
+  if (stored === 'light' || stored === 'dark' || stored === 'auto') return stored
+  return 'auto'
+}
+
+function resolveMode(mode: ThemeMode): 'light' | 'dark' {
+  return mode === 'auto' ? (media.matches ? 'dark' : 'light') : mode
+}
+
 export function applyTheme(): void {
-  const theme = configStore.theme
-  const mode = theme?.mode ?? 'light'
+  const effective = resolveMode(mode.value)
   const root = document.documentElement
-  root.dataset.theme = mode
-  const tokens = { ...(mode === 'dark' ? DARK_TOKENS : LIGHT_TOKENS), ...(theme?.tokens ?? {}) }
+  root.dataset.theme = effective
+  const tokens = {
+    ...(effective === 'dark' ? DARK_TOKENS : LIGHT_TOKENS),
+    ...(configStore.theme?.tokens ?? {})
+  }
   for (const [name, value] of Object.entries(tokens)) {
     root.style.setProperty(`--rt-${name}`, value)
+  }
+}
+
+export const themeStore = {
+  get mode(): ThemeMode {
+    return mode.value
+  },
+  setMode(next: ThemeMode): void {
+    mode.value = next
+    localStorage.setItem(STORAGE_KEY, next)
+    applyTheme()
+  },
+  cycle(): void {
+    const order: ThemeMode[] = ['light', 'dark', 'auto']
+    const index = order.indexOf(mode.value)
+    this.setMode(order[(index + 1) % order.length])
+  },
+  init(): void {
+    media.addEventListener('change', () => {
+      if (mode.value === 'auto') applyTheme()
+    })
+    applyTheme()
   }
 }

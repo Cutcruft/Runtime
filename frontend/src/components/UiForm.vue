@@ -2,13 +2,16 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { sessionStore } from '../store/session'
 import { toasts } from '../store/toasts'
+import { i18nStore } from '../store/i18n'
 import { useCfg } from '../renderer/useConfig'
 import { findAction, runAction } from '../renderer/bindingEngine'
 import type { BindingContext, FormFieldConfig, FormConfig } from '../protocol/componentSpec'
 
 const props = defineProps<{ config: Record<string, unknown>; context?: BindingContext }>()
 
-const cfg = useCfg<FormConfig>(props.config, { submitLabel: 'Submit', fields: [], layout: {} })
+const t = i18nStore.t
+
+const cfg = useCfg<FormConfig>(props.config, { submitLabel: '', fields: [], layout: {} })
 
 const fields = computed(() => cfg.value.fields ?? [])
 
@@ -215,7 +218,7 @@ const formStyle = computed(() => ({
     </div>
     <div class="ui-form__actions" :class="{ 'ui-form__actions--full': layoutColumns > 1 }">
       <button class="ui-button ui-button--primary" type="submit" :disabled="busy">
-        {{ busy ? 'Saving…' : (cfg.submitLabel ?? 'Submit') }}
+        {{ busy ? t('core.button.loading') : (cfg.submitLabel || t('core.form.submit')) }}
       </button>
       <button
         v-if="cfg.showReset"

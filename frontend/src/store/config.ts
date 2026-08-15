@@ -2,7 +2,6 @@ import { ref } from 'vue'
 import type { WorkspaceConfig } from '../protocol/types'
 
 const config = ref<WorkspaceConfig | null>(null)
-const activePageId = ref<string | null>(null)
 
 export const configStore = {
   get value(): WorkspaceConfig | null {
@@ -32,17 +31,20 @@ export const configStore = {
   get entities() {
     return config.value?.entities ?? []
   },
+  get overlays() {
+    return config.value?.overlays ?? []
+  },
+  get overlayTriggers() {
+    return config.value?.overlayTriggers ?? []
+  },
   get transport() {
     return config.value?.transport
   },
   get theme() {
     return config.value?.app.theme
   },
-  get activePageId(): string | null {
-    return activePageId.value
-  },
-  navigate(pageId: string | null): void {
-    activePageId.value = pageId
+  get i18n() {
+    return config.value?.i18n ?? null
   },
   async load(): Promise<void> {
     const response = await fetch('/config')
@@ -51,6 +53,5 @@ export const configStore = {
     }
     const data = (await response.json()) as WorkspaceConfig
     config.value = data
-    activePageId.value = data.app.landingPageId
   }
 }

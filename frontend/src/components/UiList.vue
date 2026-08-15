@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import ComponentHost from './ComponentHost.vue'
+import { i18nStore } from '../store/i18n'
 import { useCfg } from '../renderer/useConfig'
 import { useData } from '../renderer/useData'
 import { formatValue } from '../renderer/format'
 import type { BindingContext, ListConfig } from '../protocol/componentSpec'
 
 const props = defineProps<{ config: Record<string, unknown>; context?: BindingContext }>()
+
+const t = i18nStore.t
 
 const cfg = useCfg<ListConfig>(props.config, { labelField: 'name', itemKey: 'id' })
 
@@ -35,7 +38,7 @@ function itemKey(row: Record<string, unknown>, index: number): string {
 
 <template>
   <div class="ui-list" :class="cfg.className" :style="cfg.style" :title="cfg.tooltip">
-    <p v-if="loading && rows.length === 0" class="ui-list__state">{{ loading ? 'Loading…' : '' }}</p>
+    <p v-if="loading && rows.length === 0" class="ui-list__state">{{ t('core.button.loading') }}</p>
     <p v-else-if="error" class="ui-list__error">{{ error }}</p>
     <template v-else>
       <ul v-if="cfg.itemTemplate" class="ui-list__templated">
@@ -50,7 +53,7 @@ function itemKey(row: Record<string, unknown>, index: number): string {
         </li>
       </ul>
       <p v-if="!loading && rows.length === 0" class="ui-list__state">
-        {{ cfg.emptyText ?? 'No data' }}
+        {{ cfg.emptyText ?? t('core.table.empty') }}
       </p>
     </template>
   </div>

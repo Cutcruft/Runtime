@@ -54,7 +54,7 @@ class StoragePlugin : Plugin() {
         context.registerUi(
             UiComponent(
                 "Navigation",
-                mapOf("id" to "nav-export", "label" to "Export", "pageId" to "export", "order" to 3)
+                mapOf("id" to "nav-export", "label" to "Export", "pageId" to "export", "order" to 7, "group" to "Overview", "icon" to "⇪")
             )
         )
         context.registerUi(

@@ -8,7 +8,12 @@ data class RuntimeConfig(
     val command: CommandConfig,
     val audit: AuditConfig,
     val ui: UiConfig,
+    val i18n: I18nConfig,
     val messages: Map<String, String>
+)
+
+data class I18nConfig(
+    val defaultLocale: String
 )
 
 data class ServerConfig(
@@ -48,6 +53,8 @@ data class UiConfig(
     val appComponentType: String,
     val shortcutComponentType: String,
     val subscriptionComponentType: String,
+    val overlayComponentType: String,
+    val overlayTriggerComponentType: String,
     val app: AppConfig,
     val navigationFields: NavigationFields,
     val pageFields: PageFields,
@@ -65,7 +72,9 @@ data class NavigationFields(
     val id: String,
     val label: String,
     val pageId: String,
-    val order: String
+    val order: String,
+    val group: String,
+    val icon: String
 )
 
 data class PageFields(

@@ -6,7 +6,7 @@ import runtime.domain.command.CommandResult
 import runtime.domain.obj.ObjectRef
 import runtime.domain.obj.ObjectId
 
-class CreateTaskCommand : Command("create", "Create a task") {
+class CreateTaskCommand : Command("create", "Create a task", "Tasks") {
     override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
         val p = params as? Map<*, *> ?: return CommandResult.error("Missing parameters")
         val title = p["title"] as? String ?: return CommandResult.error("Missing title")
@@ -29,7 +29,7 @@ class CreateTaskCommand : Command("create", "Create a task") {
     }
 }
 
-class ListTasksCommand : Command("list", "List tasks") {
+class ListTasksCommand : Command("list", "List tasks", "Tasks") {
     override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
         val p = params as? Map<*, *>
         val boardId = p?.get("boardId") as? String
@@ -54,7 +54,7 @@ class ListTasksCommand : Command("list", "List tasks") {
     }
 }
 
-class CompleteTaskCommand : Command("complete", "Mark a task as done") {
+class CompleteTaskCommand : Command("complete", "Mark a task as done", "Tasks") {
     override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
         val p = params as? Map<*, *> ?: return CommandResult.error("Missing parameters")
         val id = parseId(p) ?: return CommandResult.error("Missing or invalid id")
@@ -71,7 +71,7 @@ class CompleteTaskCommand : Command("complete", "Mark a task as done") {
     }
 }
 
-class DeleteTaskCommand : Command("delete", "Delete a task") {
+class DeleteTaskCommand : Command("delete", "Delete a task", "Tasks") {
     override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
         val p = params as? Map<*, *> ?: return CommandResult.error("Missing parameters")
         val id = parseId(p) ?: return CommandResult.error("Missing or invalid id")
@@ -85,7 +85,7 @@ class DeleteTaskCommand : Command("delete", "Delete a task") {
     }
 }
 
-class TaskStatsCommand : Command("stats", "Task statistics") {
+class TaskStatsCommand : Command("stats", "Task statistics", "Tasks") {
     override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
         val tasks = context.objectList<Task>(TASK_TYPE).values()
         return CommandResult.success(

@@ -8,6 +8,7 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import runtime.application.audit.AuditService
 import runtime.application.command.CommandExecutor
 import runtime.application.command.ProjectLocks
+import runtime.application.i18n.MessageRegistry
 import runtime.application.plugin.DependencyResolver
 import runtime.application.plugin.PluginManager
 import runtime.application.project.ProjectFactory
@@ -31,6 +32,7 @@ import runtime.domain.plugin.PluginId
 import runtime.domain.repositories.CommandRegistry
 import runtime.domain.repositories.SessionRepository
 import runtime.infrastructure.configuration.ConfigLoader
+import runtime.infrastructure.i18n.MessageCatalogLoader
 import runtime.infrastructure.inmem.InMemoryAuditLog
 import runtime.infrastructure.inmem.InMemoryCommandRegistry
 import runtime.infrastructure.inmem.InMemoryEntityRegistry
@@ -41,6 +43,7 @@ import runtime.infrastructure.plugin.PluginClassLoader
 import runtime.infrastructure.plugin.PluginContextImpl
 import runtime.infrastructure.plugin.PluginDescriptorLoader
 import runtime.infrastructure.plugin.PluginLoader
+import runtime.infrastructure.plugin.PluginAssetsService
 import runtime.infrastructure.web.WebServer
 import runtime.infrastructure.ws.WsEventPublisher
 
@@ -100,8 +103,22 @@ fun main(args: Array<String>) {
         )
         val loadedPluginIds = pluginManager.bootstrap(descriptors).toSet()
 
+        val messageRegistry = MessageRegistry(config.i18n.defaultLocale)
+        val messageCatalogLoader = MessageCatalogLoader()
+        messageCatalogLoader
+            .loadFromClasspath("core", "/messages/en.json")
+            .forEach { (locale, entries) -> messageRegistry.register(locale, entries) }
+        messageCatalogLoader
+            .loadFromClasspath("core", "/messages/ru.json")
+            .forEach { (locale, entries) -> messageRegistry.register(locale, entries) }
+        descriptors.forEach { descriptor ->
+            messageCatalogLoader
+                .loadFromJar(descriptor.id.value, descriptor.jarPath)
+                .forEach { (locale, entries) -> messageRegistry.register(locale, entries) }
+        }
+
         val workspaceConfiguration: WorkspaceConfiguration =
-            WorkspaceConfigurationBuilder(config.ui, config.ws.path)
+            WorkspaceConfigurationBuilder(config.ui, config.ws.path, messageRegistry)
                 .build(uiDefinitions, commandRegistry, entityRegistry, loadedPluginIds)
 
         val webServer = WebServer(
@@ -110,7 +127,8 @@ fun main(args: Array<String>) {
             dispatchService = dispatchService,
             workspaceConfiguration = workspaceConfiguration,
             activeSessions = activeSessions,
-            messages = messages
+            messages = messages,
+            pluginAssetsService = PluginAssetsService(descriptors)
         )
         webServer.start()
 

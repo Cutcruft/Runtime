@@ -1,6 +1,9 @@
 import { sessionStore } from '../store/session'
-import { configStore } from '../store/config'
+import { pageStore } from '../store/page'
 import { toasts } from '../store/toasts'
+import { i18nStore } from '../store/i18n'
+import { overlayService } from '../overlay/overlayService'
+import { emitEvent } from '../events/eventBus'
 import type { ActionBinding, ActionSpec, BindingContext, DataBinding } from '../protocol/componentSpec'
 
 const PATH_PATTERN = /^\$([\w.]+)$/
@@ -65,7 +68,7 @@ export async function loadData(binding: DataBinding | undefined, context: Bindin
 export async function dispatchAction(spec: ActionSpec, context: BindingContext): Promise<boolean> {
   switch (spec.action) {
     case 'navigate': {
-      configStore.navigate(spec.page)
+      pageStore.openPage(spec.page)
       return true
     }
     case 'command': {
@@ -81,7 +84,34 @@ export async function dispatchAction(spec: ActionSpec, context: BindingContext):
     }
     case 'toast': {
       const message = resolveParam(spec.message, context)
-      toasts.push({ message: String(message), kind: 'info' })
+      toasts.push({ message: i18nStore.tr(String(message)), kind: 'info' })
+      return true
+    }
+    case 'openModal':
+    case 'openPanel':
+    case 'openMenu': {
+      overlayService.open(spec.overlay, spec.action === 'openMenu' ? { x: 0, y: 0 } : null, context)
+      return true
+    }
+    case 'closeOverlay': {
+      overlayService.closeAll()
+      return true
+    }
+    case 'copyToClipboard': {
+      const value = spec.value !== undefined ? String(resolveParam(spec.value, context)) : ''
+      void overlayService.copyText(value)
+      return true
+    }
+    case 'editor': {
+      emitEvent({
+        kind: 'editor.command',
+        payload: {
+          editor: spec.editor,
+          command: spec.command,
+          params: resolveParams(spec.params, context),
+          componentId: context.payload?.componentId
+        }
+      })
       return true
     }
     default:
@@ -101,6 +131,6 @@ export async function runAction(
   context: BindingContext
 ): Promise<boolean> {
   if (!action) return false
-  if (action.confirm && !window.confirm(action.confirm)) return false
+  if (action.confirm && !window.confirm(i18nStore.tr(action.confirm))) return false
   return dispatchAction(action.spec, context)
 }

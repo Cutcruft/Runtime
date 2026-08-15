@@ -1,10 +1,15 @@
 package runtime.application.workspace
 
+import runtime.application.i18n.MessageRegistry
 import runtime.domain.models.AppConfiguration
 import runtime.domain.models.ComponentDefinition
 import runtime.domain.models.CommandEntry
 import runtime.domain.models.EntityEntry
+import runtime.domain.models.I18nConfiguration
+import runtime.domain.models.MenuItemEntry
 import runtime.domain.models.NavigationEntry
+import runtime.domain.models.OverlayEntry
+import runtime.domain.models.OverlayTriggerEntry
 import runtime.domain.models.PageDefinition
 import runtime.domain.models.RegisteredUi
 import runtime.domain.models.SectionDefinition
@@ -19,7 +24,8 @@ import runtime.domain.repositories.EntityRegistry
 
 class WorkspaceConfigurationBuilder(
     private val uiConfig: UiConfig,
-    private val wsPath: String = "/ws"
+    private val wsPath: String = "/ws",
+    private val messageRegistry: MessageRegistry? = null
 ) {
     fun build(
         uiDefinitions: List<RegisteredUi>,
@@ -42,10 +48,23 @@ class WorkspaceConfigurationBuilder(
             shortcuts = buildShortcuts(uiDefinitions),
             subscriptions = buildSubscriptions(uiDefinitions),
             commands = commandRegistry.all().entries.sortedBy { it.key }.map { (id, command) ->
-                CommandEntry(id = id, description = command.description)
+                CommandEntry(id = id, description = command.description, group = command.group)
             },
             entities = entityRegistry.list().sortedBy { it.value }.map { EntityEntry(type = it.value) },
+            overlays = buildOverlays(uiDefinitions),
+            overlayTriggers = buildOverlayTriggers(uiDefinitions),
+            i18n = buildI18n(),
             transport = TransportConfig(wsPath = wsPath)
+        )
+    }
+
+    private fun buildI18n(): I18nConfiguration {
+        val registry = messageRegistry
+            ?: return I18nConfiguration(defaultLocale = "en", locales = listOf("en"), messages = emptyMap())
+        return I18nConfiguration(
+            defaultLocale = registry.defaultLocale,
+            locales = registry.locales(),
+            messages = registry.messages()
         )
     }
 
@@ -83,6 +102,72 @@ class WorkspaceConfigurationBuilder(
             }
     }
 
+    private fun buildOverlays(uiDefinitions: List<RegisteredUi>): List<OverlayEntry> {
+        return uiDefinitions
+            .filter { it.definition.componentType.equals(uiConfig.overlayComponentType, ignoreCase = true) }
+            .map { reg ->
+                val config = reg.definition.config
+                OverlayEntry(
+                    id = config["id"] as? String ?: "overlay-${reg.pluginId.value}",
+                    kind = config["kind"] as? String ?: "menu",
+                    title = config["title"] as? String,
+                    content = buildComponent(config["content"]),
+                    items = buildMenuItems(config["items"]),
+                    width = config["width"] as? String,
+                    side = config["side"] as? String,
+                    text = config["text"] as? String,
+                    placement = config["placement"] as? String
+                )
+            }
+    }
+
+    private fun buildOverlayTriggers(uiDefinitions: List<RegisteredUi>): List<OverlayTriggerEntry> {
+        return uiDefinitions
+            .filter { it.definition.componentType.equals(uiConfig.overlayTriggerComponentType, ignoreCase = true) }
+            .map { reg ->
+                val config = reg.definition.config
+                OverlayTriggerEntry(
+                    event = config["event"] as? String ?: "contextmenu",
+                    componentType = config["componentType"] as? String,
+                    objectType = config["objectType"] as? String,
+                    componentId = config["componentId"] as? String,
+                    overlay = config["overlay"] as String,
+                    anchor = config["anchor"] as? String
+                )
+            }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun buildComponent(raw: Any?): ComponentDefinition? {
+        val map = raw as? Map<*, *> ?: return null
+        val type = map["type"] as? String ?: return null
+        val cfg = (map["config"] as? Map<*, *>).orEmpty()
+            .mapNotNull { (key, value) -> if (value == null) null else key.toString() to value }
+            .toMap()
+        return ComponentDefinition(type = type, config = cfg)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun buildMenuItems(raw: Any?): List<MenuItemEntry>? {
+        if (raw !is List<*>) return null
+        return raw.mapNotNull { item ->
+            val map = item as? Map<*, *> ?: return@mapNotNull null
+            MenuItemEntry(
+                label = map["label"] as? String ?: "",
+                icon = map["icon"] as? String,
+                command = map["command"] as? String,
+                params = map["params"] as? Map<String, Any>,
+                spec = map["spec"] as? Map<String, Any>,
+                confirm = map["confirm"] as? String,
+                items = buildMenuItems(map["items"]),
+                divider = map["divider"] as? Boolean,
+                disabled = map["disabled"] as? Boolean,
+                danger = map["danger"] as? Boolean,
+                shortcut = map["shortcut"] as? String
+            )
+        }
+    }
+
     private fun buildNavigation(
         uiDefinitions: List<RegisteredUi>,
         mainPluginId: PluginId?
@@ -96,7 +181,9 @@ class WorkspaceConfigurationBuilder(
                     label = reg.definition.config[fields.label] as String,
                     pageId = reg.definition.config[fields.pageId] as String?,
                     order = (reg.definition.config[fields.order] as? Number)?.toInt(),
-                    pluginId = reg.pluginId.value
+                    pluginId = reg.pluginId.value,
+                    group = reg.definition.config[fields.group] as? String,
+                    icon = reg.definition.config[fields.icon] as? String
                 )
             }
         val indexed = nav.withIndex()

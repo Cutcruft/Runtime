@@ -3,29 +3,47 @@ import { computed, onMounted } from 'vue'
 import { configStore } from './store/config'
 import { sessionStore } from './store/session'
 import { dataStore } from './store/data'
+import { i18nStore } from './store/i18n'
+import { pageStore } from './store/page'
+import { themeStore } from './store/theme'
 import PageView from './components/PageView.vue'
 import ToastViewport from './components/ToastViewport.vue'
 import CommandPalette from './components/CommandPalette.vue'
-import { applyTheme } from './renderer/theme'
+import Sidebar from './components/Sidebar.vue'
+import TabsBar from './components/TabsBar.vue'
+import OverlayHost from './overlay/OverlayHost.vue'
+
+const t = i18nStore.t
+const tr = i18nStore.tr
 
 const app = computed(() => configStore.app)
+const layout = computed(() => app.value?.layout ?? 'topbar')
 const connected = computed(() => sessionStore.isConnected)
 const projectId = computed(() => sessionStore.projectId)
-const activePageId = computed(() => configStore.activePageId)
-const title = computed(() => app.value?.title ?? 'Runtime')
+const title = computed(() => tr(app.value?.title ?? 'Runtime'))
 const logo = computed(() => {
   const value = app.value?.logo
   return value && isHttpLogo(value) ? value : undefined
 })
 
 const activePage = computed(() =>
-  configStore.pages.find((page) => page.id === activePageId.value)
+  configStore.pages.find((page) => page.id === pageStore.activePageId)
 )
 
-const pageContext = computed(() => ({ page: activePageId.value }))
+const pageContext = computed(() => ({ page: pageStore.activePageId }))
+const themeLabel = computed(() => {
+  switch (themeStore.mode) {
+    case 'dark':
+      return '☾'
+    case 'light':
+      return '☀'
+    default:
+      return '◐'
+  }
+})
 
 function navigateTo(pageId: string | undefined): void {
-  if (pageId) configStore.navigate(pageId)
+  if (pageId) pageStore.openPage(pageId)
 }
 
 async function createProject(): Promise<void> {
@@ -41,55 +59,80 @@ function isHttpLogo(logo: string): boolean {
 }
 
 onMounted(() => {
-  applyTheme()
-  if (!projectId.value && app.value?.landingPageId) {
-    configStore.navigate(app.value.landingPageId)
-  }
+  themeStore.init()
 })
 </script>
 
 <template>
-  <div class="runtime">
+  <div class="runtime" :class="`runtime--${layout}`">
     <header class="topbar">
       <div class="topbar__brand">
         <img v-if="logo" :src="logo" class="topbar__logo" alt="" />
         <h1 class="topbar__title">{{ title }}</h1>
       </div>
-      <nav class="topbar__nav">
+      <nav v-if="layout !== 'sidebar'" class="topbar__nav">
         <a
           v-for="item in configStore.navigation"
           :key="item.id"
           class="topbar__link"
-          :class="{ 'topbar__link--active': activePageId === item.pageId }"
+          :class="{ 'topbar__link--active': pageStore.activePageId === item.pageId }"
           @click.prevent="navigateTo(item.pageId)"
         >
-          {{ item.label }}
+          {{ tr(item.label) }}
         </a>
       </nav>
       <div class="topbar__actions">
+        <button
+          class="topbar__button"
+          :disabled="!pageStore.canGoBack"
+          title="Back"
+          @click="pageStore.back()"
+        >←</button>
+        <button
+          class="topbar__button"
+          :disabled="!pageStore.canGoForward"
+          title="Forward"
+          @click="pageStore.forward()"
+        >→</button>
+        <button
+          class="topbar__button"
+          :title="`Theme: ${themeStore.mode}`"
+          @click="themeStore.cycle()"
+        >{{ themeLabel }}</button>
         <span class="status" :class="connected ? 'status--ok' : 'status--err'">
-          {{ connected ? 'online' : 'offline' }}
+          {{ connected ? t('core.app.online') : t('core.app.offline') }}
         </span>
         <span v-if="projectId" class="status">{{ projectId.slice(0, 8) }}</span>
         <button v-if="!projectId" class="ui-button ui-button--primary" @click="createProject">
-          New project
+          {{ t('core.app.newProject') }}
         </button>
       </div>
     </header>
 
-    <main class="content">
-      <div v-if="!projectId" class="empty">
-        <p>No project is open. Create one to start working.</p>
-        <button class="ui-button ui-button--primary" @click="createProject">Create project</button>
-      </div>
-      <PageView v-else-if="activePage" :page="activePage" :context="pageContext" />
-      <div v-else class="empty">
-        <p>Page not found.</p>
-      </div>
-    </main>
+    <div class="runtime__body">
+      <Sidebar v-if="layout === 'sidebar'" />
+      <main class="content">
+        <TabsBar v-if="pageStore.openPages.length > 0" />
+        <div v-if="!projectId" class="content__page">
+          <div class="empty">
+            <p>{{ t('core.app.noProject') }}</p>
+            <button class="ui-button ui-button--primary" @click="createProject">{{ t('core.app.createProject') }}</button>
+          </div>
+        </div>
+        <div v-else-if="activePage" class="content__page">
+          <PageView :page="activePage" :context="pageContext" />
+        </div>
+        <div v-else class="content__page">
+          <div class="empty">
+            <p>{{ t('core.app.pageNotFound') }}</p>
+          </div>
+        </div>
+      </main>
+    </div>
 
     <ToastViewport />
     <CommandPalette />
+    <OverlayHost />
   </div>
 </template>
 
@@ -108,6 +151,28 @@ body {
 <style scoped>
 .runtime {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.runtime__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.content__page {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.5rem;
+  max-width: 72rem;
+  margin: 0 auto;
+  width: 100%;
 }
 .topbar {
   display: flex;
@@ -157,6 +222,28 @@ body {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  margin-left: auto;
+}
+.topbar__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.9rem;
+  height: 1.9rem;
+  padding: 0 0.4rem;
+  border: 1px solid var(--rt-color-border);
+  border-radius: var(--rt-radius-sm);
+  background: var(--rt-color-surface);
+  color: var(--rt-color-text);
+  cursor: pointer;
+  font: inherit;
+}
+.topbar__button:hover:not(:disabled) {
+  background: var(--rt-color-bg);
+}
+.topbar__button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 .status {
   padding: 0.15rem 0.5rem;
@@ -173,11 +260,6 @@ body {
 .status--err {
   background: var(--rt-color-danger);
   color: #fff;
-}
-.content {
-  padding: 1.5rem;
-  max-width: 72rem;
-  margin: 0 auto;
 }
 .empty {
   padding: 3rem;

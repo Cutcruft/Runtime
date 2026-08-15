@@ -36,8 +36,10 @@ class WorkspaceConfigurationBuilderTest {
         appComponentType = "App",
         shortcutComponentType = "Shortcut",
         subscriptionComponentType = "EventSubscription",
+        overlayComponentType = "Overlay",
+        overlayTriggerComponentType = "OverlayTrigger",
         app = AppConfig(title = "Runtime", logo = null, layout = "topbar"),
-        navigationFields = NavigationFields(id = "id", label = "label", pageId = "pageId", order = "order"),
+        navigationFields = NavigationFields(id = "id", label = "label", pageId = "pageId", order = "order", group = "group", icon = "icon"),
         pageFields = PageFields(id = "id", title = "title", sections = "sections"),
         appFields = AppFields(title = "title", logo = "logo", layout = "layout"),
         theme = ThemeConfig(mode = "light", tokens = emptyMap())
@@ -207,11 +209,11 @@ class WorkspaceConfigurationBuilderTest {
         val builder = WorkspaceConfigurationBuilder(
             uiConfig.copy(
                 navigationComponentType = "Menu",
-                navigationFields = NavigationFields(id = "key", label = "name", pageId = "target", order = "pos")
+                navigationFields = NavigationFields(id = "key", label = "name", pageId = "target", order = "pos", group = "section", icon = "glyph")
             )
         )
 
-        val menu = ui("demo", "Menu", mapOf("key" to "m1", "name" to "Menu 1", "target" to "p1", "pos" to 2))
+        val menu = ui("demo", "Menu", mapOf("key" to "m1", "name" to "Menu 1", "target" to "p1", "pos" to 2, "section" to "General", "glyph" to "□"))
 
         val config = builder.build(
             listOf(menu),
@@ -219,7 +221,7 @@ class WorkspaceConfigurationBuilderTest {
             InMemoryEntityRegistry(),
             loadedPluginIds = setOf(PluginId("demo"))
         )
-        assertEquals(listOf(NavigationEntry("m1", "Menu 1", "p1", 2, "demo")), config.navigation)
+        assertEquals(listOf(NavigationEntry("m1", "Menu 1", "p1", 2, "demo", "General", "□")), config.navigation)
     }
 
     @Test

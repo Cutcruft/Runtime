@@ -30,15 +30,19 @@ ui:
   appComponentType: App
   shortcutComponentType: Shortcut
   subscriptionComponentType: EventSubscription
+  overlayComponentType: Overlay
+  overlayTriggerComponentType: OverlayTrigger
   app:
     title: Runtime
     logo: null
-    layout: topbar
+    layout: sidebar
   navigationFields:
     id: id
     label: label
     pageId: pageId
     order: order
+    group: group
+    icon: icon
   pageFields:
     id: id
     title: title
@@ -50,6 +54,9 @@ ui:
   theme:
     mode: light
     tokens: {}
+
+i18n:
+  defaultLocale: en
 
 messages:
   missingCommandId: "Missing commandId"

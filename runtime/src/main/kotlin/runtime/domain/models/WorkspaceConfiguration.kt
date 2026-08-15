@@ -11,7 +11,17 @@ data class WorkspaceConfiguration(
     val subscriptions: List<SubscriptionEntry>,
     val commands: List<CommandEntry>,
     val entities: List<EntityEntry>,
+    val overlays: List<OverlayEntry>,
+    val overlayTriggers: List<OverlayTriggerEntry>,
+    val i18n: I18nConfiguration,
     val transport: TransportConfig
+)
+
+/** Locale + aggregated message catalogs (`locale -> key -> text`). */
+data class I18nConfiguration(
+    val defaultLocale: String,
+    val locales: List<String>,
+    val messages: Map<String, Map<String, String>>
 )
 
 data class AppConfiguration(
@@ -27,7 +37,9 @@ data class NavigationEntry(
     val label: String,
     val pageId: String?,
     val order: Int?,
-    val pluginId: String?
+    val pluginId: String?,
+    val group: String? = null,
+    val icon: String? = null
 )
 
 data class PageDefinition(
@@ -70,11 +82,50 @@ data class SubscriptionEntry(
 
 data class CommandEntry(
     val id: String,
-    val description: String
+    val description: String,
+    val group: String? = null
 )
 
 data class EntityEntry(
     val type: String
+)
+
+/** Declarative overlay: context menu, modal, side panel or tooltip. */
+data class OverlayEntry(
+    val id: String,
+    val kind: String,
+    val title: String? = null,
+    val content: ComponentDefinition? = null,
+    val items: List<MenuItemEntry>? = null,
+    val width: String? = null,
+    val side: String? = null,
+    val text: String? = null,
+    val placement: String? = null
+)
+
+/** One entry in a menu overlay. */
+data class MenuItemEntry(
+    val label: String,
+    val icon: String? = null,
+    val command: String? = null,
+    val params: Map<String, Any>? = null,
+    val spec: Map<String, Any>? = null,
+    val confirm: String? = null,
+    val items: List<MenuItemEntry>? = null,
+    val divider: Boolean? = null,
+    val disabled: Boolean? = null,
+    val danger: Boolean? = null,
+    val shortcut: String? = null
+)
+
+/** Binds a gesture (contextmenu / dblclick / selection / hover / drag) to an overlay. */
+data class OverlayTriggerEntry(
+    val event: String,
+    val componentType: String? = null,
+    val objectType: String? = null,
+    val componentId: String? = null,
+    val overlay: String,
+    val anchor: String? = null
 )
 
 data class TransportConfig(

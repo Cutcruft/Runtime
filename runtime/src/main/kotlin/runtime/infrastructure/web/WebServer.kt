@@ -13,6 +13,7 @@ import runtime.domain.models.Messages
 import runtime.domain.models.RuntimeConfig
 import runtime.domain.models.WorkspaceConfiguration
 import runtime.domain.repositories.SessionRepository
+import runtime.infrastructure.plugin.PluginAssetsService
 import runtime.infrastructure.ws.WsSessionHandler
 
 class WebServer(
@@ -21,7 +22,8 @@ class WebServer(
     private val dispatchService: CommandDispatchService,
     private val workspaceConfiguration: WorkspaceConfiguration,
     private val activeSessions: MutableMap<String, DefaultWebSocketSession>,
-    private val messages: Messages
+    private val messages: Messages,
+    private val pluginAssetsService: PluginAssetsService
 ) {
     fun start() {
         embeddedServer(Netty, port = config.server.port, host = config.server.host, module = {
@@ -31,7 +33,7 @@ class WebServer(
 
     fun Application.module() {
         install(WebSockets)
-        HttpEndpoints(config.http, workspaceConfiguration).module()(this)
+        HttpEndpoints(config.http, workspaceConfiguration, pluginAssetsService).module()(this)
         routing {
             webSocket(config.ws.path) {
                 WsSessionHandler(dispatchService, sessionRepository, activeSessions, messages).handle(this)

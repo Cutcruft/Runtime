@@ -1,5 +1,6 @@
 import { reactive } from 'vue'
 import { emitEvent } from './eventBus'
+import { pageStore } from '../store/page'
 import type { ShortcutEntry } from '../protocol/types'
 
 interface ActiveShortcut {
@@ -125,6 +126,12 @@ export function emitShortcutAction(entry: ShortcutEntry): void {
       break
     case 'event':
       emitEvent({ kind: 'shortcut.triggered', payload: { shortcutId: entry.id, params: entry.params } })
+      break
+    case 'pageBack':
+      pageStore.back()
+      break
+    case 'pageForward':
+      pageStore.forward()
       break
   }
 }

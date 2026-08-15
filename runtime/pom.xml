@@ -81,6 +81,12 @@
             <groupId>org.jetbrains.kotlin</groupId>
             <artifactId>kotlin-test-junit5</artifactId>
         </dependency>
+        <dependency>
+            <groupId>io.runtime.plugins</groupId>
+            <artifactId>demo</artifactId>
+            <version>1.0.0</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

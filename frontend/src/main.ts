@@ -12,6 +12,7 @@ import { overlayService } from './overlay/overlayService'
 import { initGestureListener } from './events/GestureListener'
 import { registerEditor } from './editor/editorRegistry'
 import { pageStore } from './store/page'
+import { routerStore } from './store/router'
 import type { RuntimeEvent } from './protocol/envelope'
 
 registerBuiltinComponents()
@@ -23,7 +24,7 @@ registerEditor('canvas2d', () => import('./editor/UiCanvas.vue'))
 function routeActionEvents(event: RuntimeEvent): void {
   if (event.kind === 'navigation.request') {
     const page = event.payload.page
-    if (typeof page === 'string') pageStore.openPage(page)
+    if (typeof page === 'string') routerStore.open(page)
   } else if (event.kind === 'command.request') {
     const command = event.payload.command
     if (typeof command === 'string') {
@@ -42,7 +43,7 @@ async function bootstrap(): Promise<void> {
   }
 
   i18nStore.init(configStore.i18n)
-  pageStore.init()
+  routerStore.init()
   overlayService.registerWorkspace(configStore.overlays, configStore.overlayTriggers)
   createApp(App).mount('#app')
 

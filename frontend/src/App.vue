@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { configStore } from './store/config'
 import { sessionStore } from './store/session'
 import { dataStore } from './store/data'
 import { i18nStore } from './store/i18n'
 import { pageStore } from './store/page'
+import { routerStore } from './store/router'
 import { themeStore } from './store/theme'
 import PageView from './components/PageView.vue'
 import ToastViewport from './components/ToastViewport.vue'
@@ -25,6 +26,7 @@ const logo = computed(() => {
   const value = app.value?.logo
   return value && isHttpLogo(value) ? value : undefined
 })
+const drawerOpen = ref(false)
 
 const activePage = computed(() =>
   configStore.pages.find((page) => page.id === pageStore.activePageId)
@@ -43,7 +45,14 @@ const themeLabel = computed(() => {
 })
 
 function navigateTo(pageId: string | undefined): void {
-  if (pageId) pageStore.openPage(pageId)
+  if (pageId) {
+    routerStore.open(pageId)
+    drawerOpen.value = false
+  }
+}
+
+function toggleDrawer(): void {
+  drawerOpen.value = !drawerOpen.value
 }
 
 async function createProject(): Promise<void> {
@@ -64,8 +73,31 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="runtime" :class="`runtime--${layout}`">
+  <div v-if="routerStore.isEmbed" class="runtime runtime--embed">
+    <main class="content">
+      <div v-if="activePage" class="content__page">
+        <PageView :page="activePage" :context="pageContext" />
+      </div>
+      <div v-else class="content__page">
+        <div class="empty">
+          <p>{{ t('core.app.pageNotFound') }}</p>
+        </div>
+      </div>
+    </main>
+    <ToastViewport />
+    <CommandPalette />
+    <OverlayHost />
+  </div>
+
+  <div v-else class="runtime" :class="`runtime--${layout}`">
     <header class="topbar">
+      <button
+        v-if="layout === 'sidebar'"
+        class="topbar__button topbar__burger"
+        :aria-expanded="drawerOpen"
+        aria-label="Toggle navigation"
+        @click="toggleDrawer"
+      >☰</button>
       <div class="topbar__brand">
         <img v-if="logo" :src="logo" class="topbar__logo" alt="" />
         <h1 class="topbar__title">{{ title }}</h1>
@@ -110,7 +142,7 @@ onMounted(() => {
     </header>
 
     <div class="runtime__body">
-      <Sidebar v-if="layout === 'sidebar'" />
+      <Sidebar v-if="layout === 'sidebar'" :open="drawerOpen" @close="drawerOpen = false" />
       <main class="content">
         <TabsBar v-if="pageStore.openPages.length > 0" />
         <div v-if="!projectId" class="content__page">
@@ -177,7 +209,8 @@ body {
 .topbar {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
   padding: 0.5rem 1.5rem;
   background: var(--rt-color-surface);
   border-bottom: 1px solid var(--rt-color-border);
@@ -267,5 +300,37 @@ body {
   background: var(--rt-color-surface);
   border: 1px dashed var(--rt-color-border);
   border-radius: var(--rt-radius);
+}
+
+@media (max-width: 48rem) {
+  .topbar {
+    padding: 0.5rem 0.75rem;
+  }
+  .topbar__nav {
+    order: 3;
+    flex-basis: 100%;
+    overflow-x: auto;
+  }
+  .topbar__burger {
+    display: inline-flex;
+  }
+  .topbar__actions .status:not(.status--ok, .status--err) {
+    display: none;
+  }
+}
+
+@media (min-width: 48.0625rem) {
+  .topbar__burger {
+    display: none;
+  }
+}
+
+.runtime--embed {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.runtime--embed .content__page {
+  max-width: none;
 }
 </style>

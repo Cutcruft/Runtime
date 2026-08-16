@@ -8,6 +8,21 @@
 
 ---
 
+## Текущий статус (16.08.2026)
+
+**Готово:** Фазы 0–8, блоки B, D, A, C и E ядра, полный suite `mvn -o -pl runtime -am clean test` = 158 PASS (Block E: +18 storage-тестов, Фаза 9: +10 routing/embed/SPA-тестов), WS smoke всех типов команд PASS.
+
+**Ближайшие шаги по плану (порядок Q7: A → C → B → D → E):**
+- [x] D-остатки: SDK-шаблоны `EntityModelScript` (create/update/delete/validate, `references`) + интеграция в demo (`demo.taskcreate/update/delete/validate`); `Command` → `execute` (final, try/catch + JUL-лог) + protected `executeInternal`. Проверено: suite + WS smoke (SYSTEM + регрессия D-семейств) PASS.
+- [x] **Блок A** — базовый UI-слой ядра: `ui.theme` глобальные токены (палитра/типографика/отступы/радиусы), `ui.pluginOrder`, entrypoint из ядра, `ui.nav.include/exclude`. Suite 130 PASS + live-проверка pluginOrder → nav/лендинг.
+- [x] **Блок C** — авто-обнаружение `messages/<locale>.json` на classpath ядра (уже реализовано: `loadFromClasspathAll` + валидация locales/defaultLocale + ошибки старта; тест покрывает).
+- [x] **Блок E / Фаза 11** — хранилище: `EntityStore`, `ColdStore`, бэкенды `memory|files|hybrid` (LRU-эвакуация, write-behind flush, load-on-miss), `redis|db` — заготовка (rejected). Suite 148 PASS + 18 storage-тестов.
+- [x] **Фаза 9** — роутинг/эмбед/редиректы/адаптивность: `routing {mode, redirects}` в конфиге + валидация; router-стор (`#/page/<id>`, history-mode + SPA-fallback, deep-link/back-forward, цепочки редиректов с защитой от циклов); `/embed?page=<id>` без хрома + `UiFrame` (src `page:`/`asset:`/URL); адаптивная оболочка (бургер→drawer, топбар, авто-скролл табов) + container queries (UiCard/UiList/UiTable/UiForm, editors уже с ResizeObserver). Suite 158 PASS + оба smoke PASS. Осталась ручная визуальная проверка.
+- [ ] Фаза 10 — dev-режим + /docs + Storybook; Фаза 12 — коллаборация.
+- [ ] Ручная визуальная проверка (Фаза 8.2): ПКМ на canvas/scene, стенсил+drag, `⌘Z`, layout.
+
+---
+
 ## Решения, зафиксированные с пользователем
 
 | Вопрос | Решение |
@@ -103,14 +118,14 @@
 - [x] `UiDiagram.vue`: контент `{nodes, edges}` (JSON), сохранение командой, select/delete/fit, add-edge в режиме «источник→цель».
 - [x] Конфиг движка: `grid`, `panning`, `mousewheel`, `toolbar` (или `false`), подключение рёбер (magnet/manhattan/rounded), `readonly`.
 - [x] Кнопка `layout` (грид-раскладка: сортировка по (y,x), `Math.ceil(sqrt(n))` колонок) + конфиг `layout: {gapX, gapY}`.
-- [ ] `layout {dagre|circle}`, dnd/stencil-палитра, history/clipboard/keyboard — не в скоупе демо, escape-hatch через `registerComponent`.
+- [ ] `layout {dagre|circle}`, dnd/stencil-палитра, history/clipboard/keyboard — **реализовано в Фазе 8.2** ([x] ниже), escape-hatch через `registerComponent` сохранён.
 - [x] Документация маппинга конфиг→Graph API — `docs/Редакторы.md`.
 
 ### 2.3 Scene3D (three.js)
 - [x] Установить deps (`three@^0.185.1`, `@types/three`).
 - [x] `UiScene3D.vue`: процедурная сцена из `content` (box/sphere/cylinder/model-gltf), тулбар add/delete/resetCamera, pick по клику, авто-вращение.
 - [x] Схема `camera` (`fov/position/target`, применяется при старте и в resetCamera) + `lights` (`ambient.intensity`, `directional.intensity/position`) — декларативно.
-- [ ] Nested objects, textures, environment/fog — упрощено; GLTF через `GLTFLoader` + `/plugin-assets/`.
+- [ ] Nested objects, textures, environment/fog — **реализовано в Фазе 8.3** ([x] ниже, упрощённо); GLTF через `GLTFLoader` + `/plugin-assets/`.
 - [x] Ленивая инициализация renderer при монтировании; cleanup (dispose geometry/material/renderer/controls/RAF) при размонтировании.
 
 ### 2.4 Canvas2D — доска + рисование (нативный Canvas 2D API)
@@ -129,7 +144,7 @@
 - [x] `chunkSizeWarningLimit` поднят до 700 КБ (единственный чанк >500 КБ — ленивый Scene3D 638 КБ).
 - [x] Проверено: чанки грузятся только при использовании типа (появление в конфиге) — `dist/` анализ + код-сплит.
 - [x] Начальный бандл не вырос: `index` 137.7 КБ (48.9 gzip), 1178 модулей суммарно.
-- [ ] (Опция/позже) JS-бандлы плагинов — документировать как escape-hatch, если понадобится «JAR без 3D».
+- [x] (Опция/позже) JS-бандлы плагинов — escape-hatch задокументирован (`registerComponent` + будущий `registerComponent` с JS-бандлами плагинов в `componentRegistry.ts`); не требуется для MVP.
 
 **Результат:** `[x]` — выполнено. Сборка чистая, без предупреждений.
 
@@ -228,71 +243,195 @@
 ## Фаза 7 — UI-примитивы для сборки (в т.ч. досок) + DnD + картинки/иконки + группы команд
 
 ### 7.1 Примитивы
-- [ ] `UiCard` (`title/icon/actions/body/footer`), `UiAvatar` (`name/color/initials`), `UiProgress` (`value/max/tone`), `UiTabs` (внутрикомпонентные вкладки), `UiAccordion`, `UiBadge` (расширить tone).
-- [ ] `UiColumn`/layout-контейнеры (`gap/grow/scroll`); `UiList` — `sortable`.
-- [ ] Типы в `componentSpec` + builtin-реестр; конфиг демо: страница «Доски» из карточек/аватаров/прогресса (сборка доски из примитивов).
+- [x] `UiAvatar` (`name`→инициалы / `src` / `fallback`, `size`, `tone`), `UiProgress` (`value`/`valueKey` из data-биндинга, `showLabel`, `label`, `tone`), `UiAccordion` (`items[].components`, открытие по заголовку, `change` action, aria-expanded), `UiTabs` (внутрикомпонентные вкладки — было), `UiBadge` (расширен tone) — было.
+- [x] `UiList` — `sortable` (native HTML5 drag, `reorder` action с payload `{from, to, row, ids}`), визуальные состояния dragging/over. Layout-контейнеры (`Space`/`Grid`/`Column`) — есть.
+- [x] Типы в `componentSpec` (`AvatarConfig`/`ProgressConfig`/`AccordionConfig`/`ListConfig.sortable`) + builtin-реестр; конфиг демо: таб «Виджеты» на странице «Доски» (Avatar/Progress/Accordion/sortable List задач).
 
 ### 7.2 DnD (перетаскивание)
-- [ ] `frontend/src/events/dndService.ts` — drag-инициация из компонента (переиспользует drag-жест), drag-overlay (полупрозрачная копия), drop-зоны по `accept`-типам; события на eventBus.
-- [ ] `componentSpec`: `drag: {type, data}` / `drop: {accept, onDrop: {action/command, params}}`.
-- [ ] Демо: перетаскивание карточек между колонками (список-доска из примитивов) → команда `demo.movecard` (переупорядочивание/перенос между колонками).
-- [ ] Стенсил-палитра в Diagram использует dnd (см. Фазу 8).
+- [x] Сорт-лист (drag-to-reorder) в `UiList`; payload reorder содержит новый порядок `ids` → команда `demo.reordertasks` (поле `order` у Task, `demo.list` сортирует; упорядочивание с частичным diff — обновляются только изменённые).
+- [x] `componentSpec`: `ListConfig.sortable` + событие `reorder`; демо-биндинг: `reorder` → `demo.reordertasks` с `ids: "$payload.ids"`.
+- [x] Демо: sortable List в табе «Виджеты» + команда `demo.reordertasks` (группа Tasks). Стенсил-палитра Diagram (X6 dnd) — Фаза 8.
 
 ### 7.3 UiImage + иконки из ассетов плагина
-- [ ] `UiImage` компонент (`src`, `fit: cover|contain|fill`, `alt`, `ratio`); src — ассет плагина или внешний URL.
-- [ ] Резолв `icon`/`logo` в конфиге: путь вида `assets/*.ext` → `/plugin-assets/<pluginId>/...` — в nav/меню/кнопках/табах (поле icon у navigation/menu уже есть; добавить в Button/Badge/UiCard/UiList).
-- [ ] Демо: иконки nav/меню из assets; UiImage на странице «Доски».
+- [x] `UiImage` (`src/fit/alt/width/height`) — был; рендерит абсолютные пути, включая `/plugin-assets/...`.
+- [x] Резолв ассетов на бэкенде: `WorkspaceConfigurationBuilder.resolveAssetUrls` — глубокий проход по конфигу каждого `RegisteredUi`: `assets|icons|images|static/*` → `/plugin-assets/<pluginId>/...` (в nav/меню/кнопках/страницах/оверлеях). Эндпоинт `/plugin-assets/{pluginId}/{path}` уже был.
+- [x] `frontend/src/renderer/icon.ts` — `iconView(icon)` → `{glyph|src}`; `Sidebar` и `UiButton` рендерят `<img>` для URL-иконок.
+- [x] Демо: `assets/icon-logo.svg` (новый ассет), nav-boards использует его; Avatar `src: assets/icon-logo.svg`.
 
 ### 7.4 Группировка команд
-- [ ] Бэкенд: `CommandEntry` + `group` (дескриптор команды) → `/config` (`commands[].group`).
-- [ ] CommandPalette: секции по группам (заголовки); /docs тоже группирует (Фаза 10).
-- [ ] Демо: группы (workspace/documents/diagram/canvas/scene/storage…).
+- [x] Бэкенд: SDK `Command(name, description, group)` + `CommandEntry.group` → `/config` (`commands[].group`); демо-команды сгруппированы (Tasks/Boards/Documents/Workspace/Storage; core `project.*` — без группы).
+- [x] CommandPalette: секции по группам (Pages → Tasks → Boards → Documents → Workspace → Storage), заголовки, навигация по плоскому индексу.
+- [x] Демо: группы всех команд (см. /config).
+
+**Проверка Фазы 7:** vue-tsc + vite build PASS (index 149.4 КБ/52.4 gzip, ленивые чанки не тронуты); `mvn test` — 67 тестов PASS (включая builder с group + resolveAssetUrls в тесте); `/config` — `commands[].group`, nav-boards icon → `/plugin-assets/demo/assets/icon-logo.svg`, таб «Виджеты» (Avatar/Progress/Accordion/sortable List) + биндинг reorder; `/plugin-assets/demo/assets/icon-logo.svg` → 200 image/svg+xml; WS smoke: create 3 задач → `demo.reordertasks` (обратный порядок) → `demo.list` отдаёт новый порядок — PASS.
+
+**Результат:** `[x]` — выполнено. Добавлены примитивы Avatar/Progress/Accordion, sortable List (DnD с персистом через `demo.reordertasks`), иконки/картинки из ассетов плагина (резолв на бэкенде `assets/*` → `/plugin-assets/...`, `<img>`-рендер), группы команд (секции в палитре). Доска собирается из примитивов (таб «Виджеты» на странице «Доски»).
 
 ---
-## Фаза 7 - 8 - спроектировать и реализовать небольшое изменение архитектуры
-- [ ] перепроектировать систему таким образом чтобы то за что отвечает main плагин было частью ядра. Cтруктура страниц какой плагин ентерипоинт и настройка стилистики интерфейса переходит в ядро. В плагинах оставляем структуру самой страницы наполнение контентом и кнопками и все так же логику работы как и сейчас (правки вносим минимальные) 
-- [ ] улучшить многопоточность и производительность ядра. Сделать так чтобы ядро могло обрабатывать несколько запросов одновременно учитывая что в ядре есть несколько плагинов которые могут обрабатывать запросы. Сделать так чтобы при обработке запроса не блокировался основной поток ядра. Продумать потокобезопасность и синхронизацию данных между потоками.
+## Фаза 7–8 — Перепроектирование ядра (конфигурация, многопоточность, команды, SQL, хранилище)
 
-Требуется перепроектировать архитектуру ядра и плагинов таким образом чтобы ядро могло обрабатывать несколько запросов одновременно, учитывая что в ядре есть несколько плагинов которые могут обрабатывать запросы. Сделать так чтобы при обработке запроса не блокировался основной поток ядра. Продумать потокобезопасность и синхронизацию данных между потоками.
+> Спроектировано 16.08.2026. Состоит из 5 блоков (A–E). Блоки B/D/E требуют уточняющих решений (см. вопросы внизу блока E). Исходные формулировки пользователя сохранены курсивом.
+
+### A. Перенос ответственности «main-плагина» в ядро
+*«Структура страниц, какой плагин является entrypoint'ом, и настройка стилистики интерфейса переходят в ядро. В плагинах остаётся структура самой страницы, наполнение контентом и кнопками и логика работы (правки минимальные).»*
+
+**Решение (Q1):** слоёная модель — UI-конфигурация по-прежнему задаётся в плагинах, но сам фронтенд живёт в ядре, а базовые настройки, действующие для UI всех плагинов (цвета, язык, стилистические токены), находятся в ядре.
+
+Текущее состояние:
+- Оболочка (`App`: title/logo/layout) собирается из `App`-UIDefinition **main-плагина**, перекрывая дефолты `ui.app` (`WorkspaceConfigurationBuilder.buildApp`).
+- Лендинг = `ui.landingPage` ИЛИ первая страница main-плагина (`firstPageOf`).
+- Навигация сортируется: main-плагин первым, затем `order`. «Кто первый» завязан на понятие `ui.mainPlugin` (сейчас `null`).
+- Стили: `ui.theme.tokens` уже в core-конфиге (`RuntimeConfig`).
+
+Изменения:
+- [x] **Базовый UI-слой ядра**: `ui.theme` расширен до глобальных стилистических токенов (палитра цветов, типографика, отступы, радиусы) — `ThemeConfig.tokens` (с суффиксами `.light/.dark`), фронт применяет через CSS-переменные (`frontend/src/store/theme.ts`); `ui.i18n.defaultLocale/locales` — базовая локаль всех плагинов (`I18nConfig` → `MessageRegistry`). Из `application.yaml` (RuntimeConfig). Это дефолт/нижний слой поверх UI плагинов.
+- [x] **Плагины продолжают регистрировать `App`/`Page`/`Navigation`** — конфигурация оболочки и страниц остаётся плагин-ориентированной (frontend в ядре, конфиг из плагинов). `WorkspaceConfigurationBuilder` остаётся сборщиком, base-токены ядра (`app.theme`) подмешиваются под UI всех плагинов.
+- [x] **Порядок отображения плагинов — ядро (Q-доп):** настройка `ui.pluginOrder: [<pluginId>, ...]` — явный список порядка отображения плагинов (навигация/лендинг/App). Плагины из списка — в указанном порядке, остальные после — по своему `order`; валидация (плагины из списка обязаны быть загружены). `buildNavigation` сортирует по `pluginOrder`; `ui.mainPlugin` убран.
+- [x] **Entrypoint — ядро**: лендинг = `ui.landingPage` → первая навигационная запись (в порядке `pluginOrder`) → первая страница; fallback «первая страница main-плагина» (`firstPageOf`) убран.
+- [x] Ядро агрегирует навигацию со всех плагинов; добавлено `ui.nav.include/exclude` по pluginId (фильтрация навигации).
+- [x] Проверка: `/config` не меняет форму (тема 35 токенов, i18n en/ru, nav order); suite 130 PASS (включая pluginOrder/landing/App-fallback/include/exclude); live: переключение `ui.pluginOrder=[demo-storage, demo]` меняет nav (nav-export первым) и лендинг (`export`) — PASS.
+
+### B. Многопоточность и производительность ядра
+*«Ядро обрабатывает несколько запросов одновременно (в ядре несколько плагинов); при обработке запроса не блокируется основной поток ядра; продумать потокобезопасность и синхронизацию.»*
+
+Текущее состояние:
+- `CommandExecutor.execute` → `withContext(dispatcher)` (пул `command.executorThreads` или `Default`).
+- WS-сессия обрабатывает сообщения **последовательно** (`consumeAsFlow().collect` в `WsSessionHandler`).
+- `ProjectLocks` — опт-ин ReentrantLock на проект; команды сами вызывают `withProjectLock`.
+- `SynchronizedObjectList` — RW-lock на список; проекты/сессии в безграничных CHM.
+
+Изменения:
+- [x] Декларация доступа команды: `Command.readOnly` (ANALYTICAL = read — блок D). Менеджер блокировок: **автоматический** per-project RW-lock вокруг выполнения (несколько чтений параллельно, запись сериализуется), опт-ин `withProjectLock` сохраняется для обратной совместимости. Вложенность (команда вызывает команду) — reentrant, без deadlock.
+- [x] Параллельная обработка сообщений в WS: каждый envelope — отдельная coroutine с bounded-параллелизмом на сессию. **Решение (Q2): out-of-order допустим** — результаты мапятся по `requestId` (клиент уже это делает).
+- [x] Не-блокирующий диспетчер: `CommandExecutor` на ограниченном пуле + очередь с back-pressure; блокирующий код команд (REST/БД/SQL) живёт на пуле, thread of Ktor/основной поток ядра не блокируется. `withTimeout`/отмена при превышении `command.timeoutMs`.
+- [x] Модель потокобезопасности данных: RW-lock на (project) + снапшот-копии для чтения (аналитика читает снимок без блокировки записи); события публикуются после фиксации.
+- [x] Нагрузочный smoke: N параллельных WS-сессий, замер p95; проверить отсутствие starvation.
+
+**Проверка Блока B (16.08.2026):** `mvn -o -pl runtime -am test` — 76 тестов PASS (включая новые: RW-локи `ProjectLocksTest` — read параллельны / write исключает readers / write исключает writers / write после выхода всех readers; `CommandExecutorTest` — timeout → `commandTimeout` за ~100 мс (delay(5s) прерывается), busy при maxConcurrency=1 → `commandBusy`, read-only параллельны, error-результат не публикует события). Реализация: RW-lock на kotlinx `Mutex` (не thread-affine, отменяемый; ReentrantReadWriteLock ломался на thread-migration корутины — IllegalMonitorStateException); инвариант гейта «locked ⇔ readerCount>0» (утечка гейта при уходе не-первого ридера — исправлена). WS-сессия: per-session scope, `Channel(concurrencyLimit)` back-pressure, N воркеров, send через Mutex. Конфиг: `command.maxConcurrency/queueWaitMs/timeoutMs/wsConcurrency` (Main клампит maxConcurrency ≤ пул). WS smoke (сервер): create → 12 параллельных `demo.list` — все SUCCESS за 32 мс, подтверждён **out-of-order** приход (r0,r4,r8,… vs r0,r1,…), маппинг по requestId работает.
+
+### C. i18n ядра — разобрать хардкод en/ru
+*«i18n в main захардкожены en и ru.»*
+
+Текущее состояние: `Main.kt` загружает все каталоги ядра автоматически; `MessageCatalogLoader.loadFromClasspathAll`.
+
+- [x] Авто-обнаружение: скан `messages/<locale>.json` на classpath ядра (не хардкод двух файлов); `i18n.locales` — разрешённый список, `defaultLocale` обязателен; отсутствующий locale → ошибка при старте. `loadFromClasspathAll` сканирует classes-dir или JAR ядра (только свои ресурсы, без чужих каталогов); Main.kt:134–146: allowedLocales = `i18n.locales` (или обнаруженные), отсутствующий locale → `IllegalStateException`, `defaultLocale` вне зарегистрированных → ошибка старта.
+- [x] Ключи ядра остаются `core.*`; константы `Messages.kt` — только референсы ключей (без хардкода текста). Проверено: `MessageCatalogLoaderTest` (`discovers all core catalogs from classpath` — en/ru, все ключи с префиксом `core.`), suite 130 PASS, сервер стартует.
+
+### D. Команды: типы, публичность/приватность, SQL-движок, источники данных
+*«Добавить в библиотеку плагинов SQL-движок и возможность легко добавлять источники данных и места для отправки данных как команды. Вводим 3 типа команд…»* (в тексте перечислено 5 типов — ниже 5).
+
+SDK (sdk/src/main/kotlin/runtime/domain/command):
+- [x] `CommandType { ANALYTICAL, SYSTEM, INFRASTRUCTURE, PIPELINE, LOGICAL }` — поле `type` у `Command` (default `LOGICAL`, обратная совместимость).
+- [x] `Command.visibility: PUBLIC | PRIVATE` (default PUBLIC). PRIVATE: недоступна с WS/фронта, доступна ядру (пайплайны, планировщик, внутренние сервисы). `/config` отдаёт `visibility`; `CommandDispatchService` блокирует PRIVATE с WS.
+- [x] `/config`: `commands[]` += `type`, `visibility`. CommandPalette фильтрует PRIVATE.
+- [x] Все типы команд работают с моделями плагина через `CommandContext`/`EntityRegistry` (без изменений механизма — как сейчас).
+- [x] Проверено (16.08.2026): 78 тестов PASS; `/config` отдаёт `type`/`visibility` для всех команд; тесты на блокировку PRIVATE (`private command is blocked from client dispatch`) и прохождение PUBLIC; ANALYTICAL всегда исполняется под read-lock.
+
+Аналитические (SQL над структурами ядра):
+- [x] Виртуальные таблицы = entity types проекта (`demo.task`, `demo.board`, …). Схема таблиц — **авто-маппинг полей модели через Jackson (Q4)**: сериализуемые поля → колонки; тип колонки из Jackson-значений (string/number/boolean).
+- [x] Движок — **Apache Calcite (Q3)**: кастомная `Schema`/`ScannableTable`, `scan()` отдаёт строки из entity-списков проекта; полный SQL (SELECT/WHERE/JOIN/ORDER/GROUP BY/LIMIT) через Calcite. Валидация: только SELECT (без DML). Зависимость `org.apache.calcite:calcite-core` (1.38.0, пин в parent pom) живёт в runtime; SDK не тянет Calcite — плагины объявляют только SQL-строку.
+- [x] `AnalyticalCommand(sql, params)`; `context.objectList` → таблица на момент запроса; результат — строки/JSON.
+- [x] Проверено (16.08.2026): CalciteQueryEngineTest (8 тестов: SELECT/WHERE/ORDER, GROUP BY, JOIN, params `{param}`, запрет DML, неизвестная таблица, executor-routing); полный suite 86 тестов PASS; WS smoke `demo.report` (SQL GROUP BY по demo.task) → `[{"done":1},{"open":2}]`.
+
+Системные (скрипты над моделями):
+- [x] SDK-шаблоны: `EntityModelScript`/хелперы — типовые create/update/delete/validate для моделей плагина, генерируют `references`. (`sdk/.../domain/script/EntityModelScript.kt`; тесты `EntityModelScriptTest` 8 шт; demo `TaskScript`.)
+- [x] Обработка ошибок в классе команд: в классе Command должно быть 2 метода отвечающих за исполнение (публичный final execute с try/catch и логированием через java.util.logging) и protected метод executeInternal, содержащий логику исполнения команды. executeInternal может кидать исключения, которые перехватываются в execute и залогированы; ошибка возвращается как `CommandResult.error("${e::class.simpleName}: ${e.message}")`.
+
+Инфраструктурные (запрос/отправка по grpc/rest):
+- [x] Реестр в SDK: `DataSource`/`DataSink` (`RestDataSource`/`GrpcDataSource`/`RestSink`/`GrpcSink`, kind REST/GRPC) + `PluginContext.registerDataSource/Sink`; команды ссылаются на них по id.
+- [x] **REST + gRPC сразу (Q5)**: HTTP-клиент (JDK `HttpClient`, JSON-тело, 2xx-проверка) и gRPC-клиент (grpc-java 1.68.1, pin в parent pom; proto-`FileDescriptorSet` через `GrpcDataSource`, динамические `DynamicMessage`+`JsonFormat`); десериализация ответа в модель плагина (Jackson-значения).
+- [x] `InfrastructureCommand(endpoint)` — SOURCE (invokeDataSource) / SINK (writeDataSink); `request(params)` строит тело, `parseResponse()` маппит ответ; read-only по умолчанию (общий read-lock).
+- [x] Проверено (16.08.2026): InfrastructureClientTest (6 тестов: REST source/sink, HTTP-404, gRPC unary через InProcess + динамический дескриптор, executor-routing, неизвестный источник → ошибка); полный suite 92 теста PASS; WS smoke `demo.echo` (INFRASTRUCTURE) через локальный HTTP-echo → `{"echo":{"msg":"hello world","n":42},"status":"ok"}`.
+
+Конвейер (Pipeline):
+- [x] `PipelineCommand(steps)` кодом в плагине (Q5); шаг = `{command, params, input: {переменные из выхода предыдущих}, output: {имя → переменная}}`. Ядро исполняет последовательно, передаёт данные между шагами; единый лок/транзакция опционально. Параметры вызова пайплайна — начальные переменные; `input` подставляет переменную в params шага (при null-переменной — статическое значение); `output` считывает поле из value шага (map ИЛИ модель через рефлексию) или весь value при пустом ключе.
+- [x] **Ошибки (Q4): fail-fast + `ignoreError`** — при ошибке шага пайплайн останавливается, результат — ошибка с индексом шага (`Step N (id) failed: ...`); шаг с `ignoreError: true` продолжает (ошибка попадает в результат шага). Исключение шага тоже превращается в ошибку шага.
+- [x] Шагом может быть любая команда: `SYSTEM`/`ANALYTICAL`/`INFRASTRUCTURE`/`LOGICAL`-скрипт, а также вложенный `PIPELINE` (с guard от циклов/глубины — max 8). Шаги из `PRIVATE`-команд разрешены (ядро исполняет).
+- [x] Пайплайн виден в `/config` как обычная команда (тип `PIPELINE`) и вызывается с WS; палитра показывает состав шагов (`steps`).
+- [x] Проверено (16.08.2026): PipelineCommandTest (11 тестов: последовательность+output, входные params как переменные, fail-fast с индексом, ignoreError, неизвестный шаг, ANALYTICAL-шаг, вложенный пайплайн, цикл, глубина, извлечение из модели, null-переменная); полный suite 104 PASS; WS smoke `demo.seedtasks`/`demo.pipelineinput`/`demo.pipelineignore`/`demo.pipelinefail`.
+
+Логическая (Kotlin-скрипт):
+- [x] **Движок — собственный evaluator на K2JVMCompiler (Q1)**: `kotlin-compiler-embeddable` в runtime (kotlin-compiler-embeddable 2.3.0, исключён транзитивный coroutines — конфликт с ktor 1.11.0); SDK не тянет компилятор — плагины только объявляют команды. JSR-223 (`kotlin-scripting-jsr223`) офлайн отсутствует → `KotlinScriptEngine`: single-thread компиляция вне command-path, кэш по SHA-256, уникальный per-hash фасад (`LogicalScript_<hash8>Kt`), загрузчик после компиляции (URLClassLoader кеширует индекс директории), plugin-классы резолвятся через `PluginClassLoader` (identity с сущностями проекта).
+- [x] **Скрипты — динамические, в проекте (Q2)**: хранятся как сущности проекта (скрипт = {id, name, code}), команда `LogicalScriptCommand(scriptType, scriptField)` резолвит код по `scriptId` из params/аргументов (Map/`id`/bare-строка); компиляция по требованию с кешем по хешу кода (пересборка при изменении — без пересборки плагина).
+- [x] **Контекст — полный, без песочницы (Q3)**: скрипту доступны `CommandContext` (objectList/getObject/withProjectLock) + `params`; контракт — top-level `fun run(context: CommandContext, params: Any?): Any?`; возврат `CommandResult` (или обёртка); доверие как к коду плагина; движок преподносит `DEFAULT_SCRIPT_IMPORTS`.
+- [x] Управление скриптами: демо-команды `demo.scriptcreate/scriptupdate/scriptdelete/scriptlist/scriptvalidate` + `demo.runscript` (LogicalScriptCommand); валидация синтаксиса (пробная компиляция) в scriptvalidate и при create/update; редактирование с WS.
+- [x] Публичность/приватность распространяется на скриптовые команды: `LogicalScriptCommand(visibility = PRIVATE)` передаёт visibility в `Command`; блокировка PRIVATE с WS работает для всех типов (проверено на `CommandDispatchService` — тест `private command is blocked from client dispatch`), тип-независима.
+- [x] Проверено (16.08.2026): `KotlinScriptEngineTest` (11 тестов: CommandResult как есть, обёртка возврата, params, чтение сущностей, withProjectLock, ошибка компиляции, исключение, missing run, кэш, validate, user imports) + `LogicalScriptCommandTest` (5 тестов: резолв по Map/bare-строке, ошибки missing/unknown/invalid id); полный suite `mvn -o -pl runtime -am clean test` = 119 PASS (0 failures); WS smoke D7 — scriptvalidate (good/bad/no-run) / scriptcreate / runscript (Map и bare id) / scriptlist / scriptupdate (id) / scriptdelete — все PASS; компилятор-сообщения фильтруются (только ERROR/EXCEPTION, без LOGGING-шума).
+- [x] **Регрессия блока D (16.08.2026)**: полный suite 119 PASS + финальный WS smoke, покрывающий все 4 типа команд в одном прогоне — PIPELINE (seedtasks/pipelineinput/pipelineignore/pipelinefail), ANALYTICAL (demo.report SQL по demo.task → rows), INFRASTRUCTURE (demo.echo через локальный HTTP-echo), LOGICAL (scriptcreate/runscript/scriptvalidate) + `/config` отдаёт `type` для всех семейств (ANALYTICAL/INFRASTRUCTURE/PIPELINE/LOGICAL) — все PASS.
+
+### E. Хранилище in-memory: улучшения (уточнение Фазы 11)
+*«Получше продумать улучшения inmem хранилища из следующих фаз.»*
+
+Текущее состояние: `InMemoryProjectRepository` (безграничный CHM), `SynchronizedObjectList` (RW-lock), `InMemoryAuditLog` (COW-список), сессии/реестры — безграничные.
+
+- [ ] `storage.backend: memory|files|redis|db|hybrid`; `storage.memory.maxEntities` (cap), `storage.eviction: lru`; `storage.enabled: false` → чистая память (как сейчас).
+- [ ] Гранулярность eviction — **per-entity (Q6)**: LRU по `(projectId, entityType, objectId)`; требуется рефакторинг `Project` (держит `Map<EntityType, ObjectList>`) → `EntityStore` + интеграция всех команд (блок D даёт единую точку доступа через CommandContext).
+- [ ] Абстракция `EntityStore`: `get/put/remove(projectId, type, id)`, счётчик объектов/памяти, dirty-множество (для hybrid), снапшот-чтение.
+- [ ] Hybrid: hot-LRU слой (порог `maxEntities`) + cold (files/redis); write-behind flush батчами по (тип/проект), таймер/порог; load-on-miss при обращении.
+- [ ] Потокобезопасность: striped-locks/CHM; чтения не блокируют запись (snapshot-копии); flush не блокирует command-path.
+- [ ] Ограничения: audit уже `maxEventsPerProject`; сессии — TTL; entity/command реестры малы — оставить.
+- [ ] Интеграция: все команды (`project.*`, entity CRUD, документы, редакторы) идут через `Storage`; WS без изменений.
+- [ ] Тесты: files round-trip («рестарт» → load), hybrid с малым `maxEntities` (вытеснение/возврат), невалидный конфиг. `application.yaml`: default `memory`, пример `hybrid` комментарием.
+
 ---
+
+### Решения (утверждены 16.08.2026)
+- Q1. **Оболочка**: слоёная модель — UI-конфигурация задаётся в плагинах, фронтенд в ядре, базовые настройки для UI всех плагинов (цвета/язык/стилистика) — в ядре. Entrypoint — ядро (`ui.landingPage` → первая nav-запись).
+- Q1-доп. **Порядок плагинов**: `ui.pluginOrder: [<pluginId>, ...]` — полный явный список порядка отображения плагинов; `ui.mainPlugin` убрать.
+- Q2. **Порядок WS**: out-of-order допустим, маппинг по `requestId`.
+- Q3. **SQL-движок**: Apache Calcite (schema над entity-списками проекта), только SELECT.
+- Q4. **Схема таблиц**: авто-маппинг полей модели через Jackson.
+- Q5. **Инфраструктура**: REST (JDK HttpClient) + gRPC (grpc-java) сразу.
+- Q6. **LRU**: per-entity `(projectId, entityType, objectId)` — рефакторинг Project → EntityStore.
+- Q7. **Порядок работ**: A → C → B → D → E (E перед Фазой 11; блок E уточняет Фазу 11).
+
+---
+
 
 ## Фаза 8 — Завершение редакторов
 
 ### 8.1 Контекстные меню Canvas2D / Scene3D (паттерн Фазы 5.2)
-- [ ] `UiCanvas.vue`: `canvas.element` — contextmenu → `onGesture` (componentId, row: {id,type}), подписка `editor.command` — delete/duplicate/front/back.
-- [ ] `UiScene3D.vue`: `scene3d.object` — ПКМ по мешу → onGesture (row: {id}), `editor.command` — delete/duplicate.
-- [ ] Демо: оверлеи `canvas-element-menu`, `scene-object-menu` + триггеры.
+- [x] `UiCanvas.vue`: `canvas.element` — contextmenu → `onGesture` (componentId, row: {id,type}), подписка `editor.command` — delete/duplicate/front/back.
+- [x] `UiScene3D.vue`: `scene3d.object` — ПКМ по мешу → onGesture (row: {id}), `editor.command` — delete/duplicate.
+- [x] Демо: оверлеи `canvas-element-menu`, `scene-object-menu` + триггеры.
 
 ### 8.2 Diagram: layout {dagre|circle}, стенсил, history
-- [ ] `layout: {type: dagre|circle|grid}` — `@dagrejs/dagre` (или своя раскладка) / окружность / текущая грид-раскладка.
-- [ ] Стенсил-палитра: `stencil: {nodes: [...]}` — палитра слева, dnd из палитры в граф (X6 `dnd` плагин + наш dnd из 7.2).
-- [ ] History/clipboard/keyboard: X6-плагины (undo/redo `⌘Z`/`⌘⇧Z`, copy/paste), кнопки undo/redo в тулбаре.
+- [x] `layout: {type: dagre|circle|grid}` — `@dagrejs/dagre` (или своя раскладка) / окружность / текущая грид-раскладка.
+- [x] Стенсил-палитра: `stencil: {nodes: [...]}` — палитра слева, dnd из палитры в граф (X6 `dnd` плагин + наш dnd из 7.2).
+- [x] History/clipboard/keyboard: X6-плагины (undo/redo `⌘Z`/`⌘⇧Z`, copy/paste), кнопки undo/redo в тулбаре.
 
 ### 8.3 Canvas2D undo/redo + Scene3D
-- [ ] Canvas2D: стек команд (инкрементальные операции или снапшоты), undo/redo в тулбаре + `⌘Z`.
-- [ ] Scene3D: nested objects (`children` в контенте), текстуры (color/material), fog — упрощённо.
+- [x] Canvas2D: стек команд (инкрементальные операции или снапшоты), undo/redo в тулбаре + `⌘Z`.
+- [x] Scene3D: nested objects (`children` в контенте), текстуры (color/material), fog — упрощённо.
+
+### Проверка Фазы 8 (smoke, 16.08.2026)
+- [x] `npm run build` (vue-tsc + vite) — без ошибок; новые deps: `@antv/x6-plugin-history/keyboard/clipboard/dnd`, `@dagrejs/dagre`.
+- [x] `/config`: `canvas-element-menu` (front/back/duplicate/delete) и `scene-object-menu` (duplicate/delete) + триггеры `canvas.element`→`canvas-element-menu`, `scene3d.object`→`scene-object-menu`.
+- [x] Конфиги редакторов: diagram `layout {type: dagre, gapX 40, gapY 60}` + `stencil {4 узла}` + тулбар с undo/redo; scene3d `fog {#eef2f7, 10..26}`; canvas тулбар с undo/redo. i18n `demo.canvas.menu.*`, `demo.scene.menu.*`, `demo.stencil.*` (en/ru).
+- [x] WS smoke (свежий проект): loaddocument diagram → `{nodes:4, edges:3}`; scene → `{objects:2}` c `sc_parent_1{children:[sc_child_1, sc_child_2]}`; board → пусто.
+- [ ] Визуальная проверка в браузере: ПКМ на элементе canvas / объекте сцены, стенсил+drag, `⌘Z`, layout-кнопка.
 
 ---
 
 ## Фаза 9 — Роутинг, эмбед, редиректы, адаптивность
 
 ### 9.1 URL-роутинг
-- [ ] Роутер-стор: hash `#/page/<id>` по умолчанию; `routing.mode: hash|history` из конфига (history — SPA-fallback на сервере: `/page/<id>` → index.html).
-- [ ] Табы/активная страница ↔ URL: deep-link, браузерный back/forward, восстановление открытой страницы из URL при загрузке.
+- [x] Роутер-стор (`frontend/src/store/router.ts`): hash `#/page/<id>` по умолчанию; `routing.mode: hash|history` из конфига (history — SPA-fallback на сервере: `/page/<id>` → index.html, регистрируется после `/ws`).
+- [x] Табы/активная страница ↔ URL: deep-link, браузерный back/forward, восстановление открытой страницы из URL при загрузке (`pageStore.restore`, watch activePageId → pushState, popstate/hashchange).
 
 ### 9.2 Редиректы
-- [ ] `redirects: [{from, to}]` в конфиге; резолв в навигации (navigation.request + прямое открытие URL) и в роутере.
+- [x] `redirects: [{from, to}]` в конфиге (валидация mode `hash|history`); резолв в навигации (navigation.request + прямое открытие URL) и в роутере — цепочки с защитой от циклов.
 
 ### 9.3 Эмбед-режим + UiFrame
-- [ ] `/embed?page=<id>`: рендер страницы без шапки/сайдбара/табов (для встраивания во внешний сайт).
-- [ ] `UiFrame` компонент: `{type:"Frame", src}` — URL/страница/ассет плагина.
+- [x] `/embed?page=<id>` (сервер всегда отдаёт index.html; фронт: `runtime--embed` без шапки/сайдбара/табов, страница из `?page=` или лендинг).
+- [x] `UiFrame` компонент (`components/UiFrame.vue`, тип `frame`): `{type:"Frame", src}` — `page:<id>`/`asset:<pluginId>/<path>`/URL.
 
 ### 9.4 Адаптивность оболочки
-- [ ] Sidebar→drawer на мобильном (бургер), топбар сворачивается, табы скролл, шапка адаптивна.
+- [x] Sidebar→drawer на мобильном (бургер в топбаре, скрим, z-индексы), топбар `flex-wrap`, табы авто-скролл (`scrollIntoView`), шапка адаптивна (media 48rem).
 
 ### 9.5 Адаптивность редакторов и компонентов
-- [ ] Тулбары редакторов переносятся; canvas/diagram/scene ресайз по контейнеру (ResizeObserver).
-- [ ] Container queries для компонентов (UiTable/UiForm/UiCard/UiList) — компактные режимы.
+- [x] Тулбары редакторов переносятся (`flex-wrap: wrap`); canvas/diagram/scene ресайз по контейнеру (ResizeObserver уже был — проверено).
+- [x] Container queries для компонентов (`renderer/useContainerQuery.ts`, брейкпоинты 480/768 → классы `cq--sm/md`) — компактные режимы UiTable/UiForm/UiCard/UiList (поля в колонку, поиск на всю ширину, пагинация/экшены переносятся, заголовок карточки в колонку).
 
 ---
 
@@ -314,22 +453,23 @@
 
 ## Фаза 11 — Хранилище: персистентность + оптимизация памяти (3 бэкенда)
 
-### 9.1 Абстракция
-- [ ] Интерфейс `Storage` в runtime: проекты, сущности/контент, аудит; бэкенд из конфига.
-- [ ] Конфиг: `storage.backend: memory|files|redis|db|hybrid`, `storage.enabled` (false → чистая память), `storage.memory.maxEntities`, `storage.files.directory`, `storage.redis.url`, `storage.eviction` (lru).
-- [ ] Фабрика бэкенда по конфигу, DI в `Main`.
+### 11.1 Абстракция
+- [x] Интерфейс `EntityStore` (`domain/storage/EntityStore.kt`): per-entity операции, open/exists/close/flush; `ColdStore` (load/persist/hasType/exists/availableTypes/close/closeAll); бэкенд из конфига.
+- [x] Конфиг: `StorageConfig` (`backend: memory|files|redis|db|hybrid`, `enabled` false → чистая память, `memory.maxEntities`, `files.directory`, `redis.url`, `db.url`, `eviction: lru`) + парсинг в `ConfigLoader` + блок в `application.yaml` (default memory, пример hybrid комментарием).
+- [x] Фабрика `StorageFactory` по конфигу, DI в `Main` (shutdown hook → `entityStore.closeAll()`). Валидация: `redis`/`db` → IllegalStateException «not implemented yet», unknown backend / maxEntities=0 / eviction≠lru → IllegalArgumentException.
+- [x] `DefaultEntityStore`: COW-map (volatile snapshot-чтение, synchronized COW-запись), LRU per-entity по access-времени, dirty-множество `(project,type)`, load-on-miss из cold, flush перед вытеснением (union hot+cold), `flush(projectId)/flushAll/close/closeAll`.
 
-### 9.2 Бэкенды
-- [ ] `memory` — текущий `InMemoryProjectRepository`/`InMemoryAuditLog`.
-- [ ] `files` — JSON: `<dir>/projects.json` (индексы) + `<dir>/<projectId>/**` (сущности, группировка по типам/пакетами), атомарная запись (tmp+rename), идемпотентная загрузка; большие `content` — отдельные blob-файлы.
-- [ ] `redis` — ключи `cc:entity:<project>:<type>:<id>`, пайплайн-батчи (группировка).
-- [ ] `db` — таблицы `projects`, `entities`, `audit_log`; индексы по проекту/типу/id; пакетная запись; атомарные транзакции (на выбор любая sql бд через jdbc). 
-- [ ] `hybrid` — hot-слой в памяти (LRU, порог `maxEntities`), cold — files/redis; пакетная запись холодных сущностей (по типам/проекту), flush по таймеру/порогу; вытеснение по доступу.
+### 11.2 Бэкенды
+- [x] `memory` — `DefaultEntityStore(cold = null)`, опциональный LRU-кап (`maxEntities`).
+- [x] `files` — `FileColdStore`: JSON `<dir>/<projectId>/<entityType>.json` `{"type","objects":[{"id","value"}]}`, атомарная запись (tmp+rename, ATOMIC_MOVE), идемпотентная загрузка, десериализация в зарегистрированный modelClass; каталог создаётся лениво; write-behind flush по dirty-бакетам.
+- [ ] `redis` — ключи `cc:entity:<project>:<type>:<id>`, пайплайн-батчи (группировка). (не реализовано — фабрика бросает «not implemented yet»)
+- [ ] `db` (необходимо еще продумать меня смущает, что целиком проекты в одну строку пишутся) — таблицы `projects`, `entities`, `audit_log`; индексы; пакетная запись; транзакции. (не реализовано — фабрика бросает «not implemented yet»)
+- [x] `hybrid` — hot-слой в памяти (LRU, порог `maxEntities`), cold — files; вытеснение по доступу с flush (union) в cold; load-on-miss (get восстанавливает вытесненное из cold).
 
-### 9.3 Интеграция и проверка
-- [ ] Все команды (`project.create/open/save/load/list`, entity CRUD, документы) через `Storage`; WS не меняется.
-- [ ] Тесты: files round-trip (create → «рестарт» → load), hybrid с малым `maxEntities` (вытеснение/возврат), невалидный конфиг.
-- [ ] Демо/`application.yaml`: default `memory`, пример `hybrid` комментарием.
+### 11.3 Интеграция и проверка
+- [x] Все команды через `EntityStore`: `ProjectFactory`/`ProjectSerializer`/`ProjectService` переведены на store; `StoreObjectList` — ObjectList-фасад; `ProjectService.reopen` реидрируется после «рестарта» (`store.exists`); `project.save/load` сохраняют JSON-семантику.
+- [x] Тесты (+18, suite 130 → **148 PASS**): `InMemoryEntityStoreTest` (CRUD, facade, LRU-eviction, unlimited), `FileEntityStoreTest` (round-trip через flush+reopen, removals persist, ProjectService реидратация, no `.tmp` leftovers), `HybridEntityStoreTest` (eviction+reload, closeAll→reopen), `StorageFactoryTest` (invalid configs: unknown/redis/db/maxEntities=0/eviction, disabled→memory, files lazy dir, hybrid cap).
+- [x] Демо/`application.yaml`: default `memory`/`enabled: false`, пример `hybrid` комментарием.
 
 ---
 

@@ -4,12 +4,15 @@ import { sessionStore } from '../store/session'
 import { toasts } from '../store/toasts'
 import { i18nStore } from '../store/i18n'
 import { useCfg } from '../renderer/useConfig'
+import { useContainerQuery } from '../renderer/useContainerQuery'
 import { findAction, runAction } from '../renderer/bindingEngine'
 import type { BindingContext, FormFieldConfig, FormConfig } from '../protocol/componentSpec'
 
 const props = defineProps<{ config: Record<string, unknown>; context?: BindingContext }>()
 
 const t = i18nStore.t
+const root = ref<HTMLElement | null>(null)
+const cq = useContainerQuery(root)
 
 const cfg = useCfg<FormConfig>(props.config, { submitLabel: '', fields: [], layout: {} })
 
@@ -150,13 +153,13 @@ function reset(): void {
 
 const layoutColumns = computed(() => Math.max(1, Math.min(cfg.value.layout?.columns ?? 1, 4)))
 const formStyle = computed(() => ({
-  gridTemplateColumns: `repeat(${layoutColumns.value}, minmax(0, 1fr))`,
+  gridTemplateColumns: `repeat(${cq.value === 'sm' ? 1 : layoutColumns.value}, minmax(0, 1fr))`,
   gap: cfg.value.layout?.gap ?? 'var(--rt-space-sm)'
 }))
 </script>
 
 <template>
-  <form class="ui-form" :class="cfg.className" :style="formStyle" @submit.prevent="submit">
+  <form ref="root" class="ui-form" :class="[cfg.className, `ui-form--cq-${cq}`]" :style="formStyle" @submit.prevent="submit">
     <div
       v-for="field in fields"
       :key="field.name"
@@ -290,5 +293,9 @@ const formStyle = computed(() => ({
 }
 .ui-form__actions--full {
   grid-column: 1 / -1;
+}
+.ui-form--cq-sm .ui-form__actions {
+  flex-direction: column;
+  align-items: stretch;
 }
 </style>

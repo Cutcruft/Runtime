@@ -37,6 +37,7 @@ const groups = computed<PaletteGroup[]>(() => {
   }))
   const byGroup = new Map<string, PaletteItem[]>()
   for (const command of configStore.commands) {
+    if (command.visibility === 'PRIVATE') continue
     const group = command.group ?? 'Commands'
     if (!byGroup.has(group)) byGroup.set(group, [])
     byGroup.get(group)!.push({ kind: 'command', id: command.id, description: command.description, group, command })

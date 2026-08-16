@@ -25,7 +25,7 @@ import runtime.infrastructure.inmem.InMemoryCommandRegistry
 import runtime.infrastructure.inmem.InMemoryEntityRegistry
 import runtime.infrastructure.inmem.InMemoryProjectRepository
 import runtime.infrastructure.inmem.InMemorySessionRepository
-import runtime.infrastructure.obj.SynchronizedObjectList
+import runtime.infrastructure.storage.DefaultEntityStore
 
 class CommandDispatchServiceTest {
 
@@ -37,6 +37,7 @@ class CommandDispatchServiceTest {
             Messages.INVALID_PROJECT_ID to "Invalid projectId",
             Messages.PROJECT_NOT_FOUND to "Project not found",
             Messages.COMMAND_NOT_FOUND to "Command not found",
+            Messages.COMMAND_PRIVATE to "Command is private and cannot be invoked from the client",
             Messages.MISSING_PARAMETERS to "Missing parameters",
             Messages.MISSING_DATA to "Missing data"
         )
@@ -50,8 +51,9 @@ class CommandDispatchServiceTest {
 
     init {
         val entityRegistry = InMemoryEntityRegistry()
-        val projectFactory = ProjectFactory(entityRegistry) { SynchronizedObjectList<Any>(it) }
-        projectService = ProjectService(projectRepository, projectFactory, ProjectSerializer(entityRegistry))
+        val entityStore = DefaultEntityStore()
+        val projectFactory = ProjectFactory(entityRegistry, entityStore)
+        projectService = ProjectService(projectRepository, projectFactory, ProjectSerializer(entityRegistry, entityStore), entityStore)
         val auditService = AuditService(true, 10000) { InMemoryAuditLog() }
         val executor = CommandExecutor(commandRegistry, auditService, ProjectLocks(), messages)
         val sessionManager = SessionManager(sessionRepository, projectRepository)
@@ -129,7 +131,7 @@ class CommandDispatchServiceTest {
         commandRegistry.register(
             PluginId("project"),
             object : Command("load") {
-                override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
+                override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult {
                     val projectId = (context as CommandContextImpl).project.id
                     projectService.loadProject(projectId, "{\"objects\":{}}")
                     return CommandResult.success()
@@ -154,6 +156,39 @@ class CommandDispatchServiceTest {
         val result = service.dispatch("s2", "demo.create", mapOf("title" to "T1"))
         assertTrue(result is CommandDispatchService.DispatchResult.Protocol)
         assertTrue((result as CommandDispatchService.DispatchResult.Protocol).message.contains("project.create"))
+    }
+
+    @Test
+    fun `private command is blocked from client dispatch`() = runBlocking {
+        registerSession("s3")
+        commandRegistry.register(
+            PluginId("demo"),
+            object : Command("internal", visibility = runtime.domain.command.CommandVisibility.PRIVATE) {
+                override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult =
+                    CommandResult.success()
+            }
+        )
+        service.dispatch("s3", "project.create", null)
+        val result = service.dispatch("s3", "demo.internal", emptyMap<String, Any>())
+        assertTrue(result is CommandDispatchService.DispatchResult.Protocol)
+        assertTrue((result as CommandDispatchService.DispatchResult.Protocol).message.contains("private"))
+    }
+
+    @Test
+    fun `public command is executed from client dispatch`() = runBlocking {
+        registerSession("s4")
+        commandRegistry.register(
+            PluginId("demo"),
+            object : Command("greet") {
+                override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult =
+                    CommandResult.success(mapOf("hello" to "world"))
+            }
+        )
+        service.dispatch("s4", "project.create", null)
+        val result = service.dispatch("s4", "demo.greet", emptyMap<String, Any>())
+        assertTrue(result is CommandDispatchService.DispatchResult.Result)
+        val value = (result as CommandDispatchService.DispatchResult.Result).commandResult.value as Map<*, *>
+        assertEquals("world", value["hello"])
     }
 
     private fun generateId(): String = java.util.UUID.randomUUID().toString()

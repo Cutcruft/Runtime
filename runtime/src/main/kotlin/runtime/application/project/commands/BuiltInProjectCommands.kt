@@ -5,6 +5,7 @@ import runtime.application.command.CommandContextImpl
 import runtime.application.project.ProjectService
 import runtime.domain.command.Command
 import runtime.domain.command.CommandContext
+import runtime.domain.command.CommandParameter
 import runtime.domain.command.CommandResult
 import runtime.domain.models.Messages
 import runtime.domain.models.Project
@@ -17,8 +18,12 @@ private fun CommandContext.requireProject(): Project =
 class ProjectCreateCommand(
     private val projectService: ProjectService,
     private val messages: Messages
-) : Command("create", messages[Messages.DESC_CREATE]) {
-    override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
+) : Command(
+    "create",
+    messages[Messages.DESC_CREATE],
+    parameters = listOf(CommandParameter("projectId", "uuid", required = false, description = "Explicit project id"))
+) {
+    override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult {
         val projectIdStr = (params as? Map<*, *>)?.get("projectId") as? String
         val projectId = if (projectIdStr != null) {
             ProjectId(UUID.fromString(projectIdStr))
@@ -33,8 +38,12 @@ class ProjectCreateCommand(
 class ProjectOpenCommand(
     private val projectService: ProjectService,
     private val messages: Messages
-) : Command("open", messages[Messages.DESC_OPEN]) {
-    override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
+) : Command(
+    "open",
+    messages[Messages.DESC_OPEN],
+    parameters = listOf(CommandParameter("projectId", "uuid", required = true, description = "Project id"))
+) {
+    override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult {
         val projectIdStr = (params as? Map<*, *>)?.get("projectId") as? String
             ?: return CommandResult.error(messages[Messages.MISSING_PROJECT_ID])
         val project = projectService.getProject(ProjectId(UUID.fromString(projectIdStr)))
@@ -47,7 +56,7 @@ class ProjectListCommand(
     private val projectService: ProjectService,
     private val messages: Messages
 ) : Command("list", messages[Messages.DESC_LIST]) {
-    override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
+    override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult {
         val projects = projectService.listProjects().map { it.value.toString() }
         return CommandResult.success(projects)
     }
@@ -57,7 +66,7 @@ class ProjectSaveCommand(
     private val projectService: ProjectService,
     private val messages: Messages
 ) : Command("save", messages[Messages.DESC_SAVE]) {
-    override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
+    override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult {
         val project = context.requireProject()
         val data = projectService.saveProject(project)
         return CommandResult.success(
@@ -69,8 +78,15 @@ class ProjectSaveCommand(
 class ProjectLoadCommand(
     private val projectService: ProjectService,
     private val messages: Messages
-) : Command("load", messages[Messages.DESC_LOAD]) {
-    override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
+) : Command(
+    "load",
+    messages[Messages.DESC_LOAD],
+    parameters = listOf(
+        CommandParameter("data", "string", required = true, description = "Serialized project JSON"),
+        CommandParameter("projectId", "uuid", required = false, description = "Target project id (defaults to current)")
+    )
+) {
+    override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult {
         val paramsMap = params as? Map<*, *>
             ?: return CommandResult.error(messages[Messages.MISSING_PARAMETERS])
         val data = paramsMap["data"] as? String

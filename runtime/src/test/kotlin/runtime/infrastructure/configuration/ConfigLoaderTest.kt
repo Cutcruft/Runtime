@@ -2,6 +2,7 @@ package runtime.infrastructure.configuration
 
 import java.io.File
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -50,5 +51,51 @@ class ConfigLoaderTest {
         val config = ConfigLoader().load("/nonexistent/config.yaml")
         assertEquals(8080, config.server.port)
         assertEquals("0.0.0.0", config.server.host)
+    }
+
+    @Test
+    fun `routing defaults to hash mode without redirects`() {
+        val config = ConfigLoader().load(null)
+        assertEquals("hash", config.routing.mode)
+        assertTrue(config.routing.redirects.isEmpty())
+    }
+
+    @Test
+    fun `external routing section overrides mode and parses redirects`() {
+        val file = File.createTempFile("runtime-config", ".yaml")
+        try {
+            file.writeText(
+                """
+                routing:
+                  mode: history
+                  redirects:
+                    - from: home
+                      to: boards
+                    - from: legacy
+                      to: docs
+                """.trimIndent()
+            )
+            val config = ConfigLoader().load(file.absolutePath)
+            assertEquals("history", config.routing.mode)
+            assertEquals(
+                listOf("home" to "boards", "legacy" to "docs"),
+                config.routing.redirects.map { it.from to it.to }
+            )
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun `unsupported routing mode is rejected`() {
+        val file = File.createTempFile("runtime-config", ".yaml")
+        try {
+            file.writeText("routing:\n  mode: query\n")
+            assertFailsWith<IllegalArgumentException> {
+                ConfigLoader().load(file.absolutePath)
+            }
+        } finally {
+            file.delete()
+        }
     }
 }

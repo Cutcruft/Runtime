@@ -9,6 +9,7 @@ import runtime.domain.models.ProjectId
 import runtime.domain.repositories.EntityRegistry
 import runtime.infrastructure.inmem.InMemoryEntityRegistry
 import runtime.infrastructure.obj.SynchronizedObjectList
+import runtime.infrastructure.storage.DefaultEntityStore
 
 data class TaskModel(val title: String, val status: String)
 
@@ -31,7 +32,8 @@ class ProjectSerializerTest {
         val ref1 = list.create(TaskModel("first", "open"))
         val ref2 = list.create(TaskModel("second", "done"))
 
-        val serializer = ProjectSerializer(registry)
+        val entityStore = DefaultEntityStore()
+        val serializer = ProjectSerializer(registry, entityStore)
         val data = serializer.serialize(project)
         val restored = serializer.deserialize(project.id, data)
 
@@ -47,7 +49,8 @@ class ProjectSerializerTest {
         val type = EntityType("demo.task")
         val project = Project(ProjectId.generate(), mapOf(type to SynchronizedObjectList<TaskModel>(type)))
 
-        val serializer = ProjectSerializer(registry)
+        val entityStore = DefaultEntityStore()
+        val serializer = ProjectSerializer(registry, entityStore)
         val restored = serializer.deserialize(project.id, serializer.serialize(project))
 
         assertEquals(0, restored.objectList<TaskModel>(type)!!.size())

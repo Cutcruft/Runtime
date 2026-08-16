@@ -8,6 +8,11 @@ class PluginLoader(
     private val pluginDirectories: List<String>,
     private val descriptorLoader: PluginDescriptorLoader
 ) {
+    private val loadedClassLoaders = mutableListOf<ClassLoader>()
+
+    /** Class loaders created by [loadClass]; kept for callers that need class identity. */
+    fun loadedClassLoaders(): List<ClassLoader> = loadedClassLoaders.toList()
+
     fun discover(): List<PluginDescriptor> {
         val descriptors = mutableListOf<PluginDescriptor>()
         for (dir in pluginDirectories) {
@@ -30,6 +35,7 @@ class PluginLoader(
             throw IllegalArgumentException("Plugin JAR not found: ${descriptor.jarPath}")
         }
         val classLoader = PluginClassLoader(parent, listOf(jarFile.toURI().toURL()))
+        loadedClassLoaders += classLoader
         return Class.forName(descriptor.mainClass, true, classLoader)
     }
 }

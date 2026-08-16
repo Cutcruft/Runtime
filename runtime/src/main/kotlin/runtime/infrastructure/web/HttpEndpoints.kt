@@ -19,7 +19,8 @@ import runtime.infrastructure.plugin.PluginAssetsService
 class HttpEndpoints(
     private val httpConfig: HttpConfig,
     private val workspaceConfiguration: WorkspaceConfiguration,
-    private val pluginAssetsService: PluginAssetsService
+    private val pluginAssetsService: PluginAssetsService,
+    private val routingMode: String = "hash"
 ) {
     fun module(): Application.() -> Unit = {
         install(ContentNegotiation) {
@@ -45,6 +46,43 @@ class HttpEndpoints(
                 call.respondBytes(asset.bytes, ContentType.parse(contentTypeFor(asset.name)))
             }
         }
+    }
+
+    /**
+     * Shell entry routes: `/embed` (embed mode, chrome-less render) and `/docs`
+     * (runtime API documentation) always serve `index.html`; in `history` mode any
+     * unknown path serves `index.html` so the router can handle `/page/<id>` deep links.
+     * Must be registered AFTER the WebSocket route so `/ws` wins.
+     */
+    fun spa(): Application.() -> Unit = {
+        routing {
+            get("/embed") {
+                call.serveIndex()
+            }
+            get("/docs") {
+                call.serveIndex()
+            }
+            if (routingMode == "history") {
+                get("/{path...}") {
+                    call.serveIndex()
+                }
+            }
+        }
+    }
+
+    private suspend fun io.ktor.server.application.ApplicationCall.serveIndex() {
+        val index = indexHtml
+        if (index == null) {
+            respond(HttpStatusCode.NotFound)
+        } else {
+            respondBytes(index, ContentType.Text.Html)
+        }
+    }
+
+    private val indexHtml: ByteArray? by lazy {
+        javaClass.classLoader
+            .getResource("${httpConfig.staticRoot}/index.html")
+            ?.readBytes()
     }
 
     private fun contentTypeFor(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {

@@ -33,11 +33,19 @@ class WebServer(
 
     fun Application.module() {
         install(WebSockets)
-        HttpEndpoints(config.http, workspaceConfiguration, pluginAssetsService).module()(this)
+        val httpEndpoints = HttpEndpoints(config.http, workspaceConfiguration, pluginAssetsService, config.routing.mode)
+        httpEndpoints.module()(this)
         routing {
             webSocket(config.ws.path) {
-                WsSessionHandler(dispatchService, sessionRepository, activeSessions, messages).handle(this)
+                WsSessionHandler(
+                    dispatchService,
+                    sessionRepository,
+                    activeSessions,
+                    messages,
+                    config.command.wsConcurrency ?: 8
+                ).handle(this)
             }
         }
+        httpEndpoints.spa()(this)
     }
 }

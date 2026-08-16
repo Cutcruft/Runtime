@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { configStore } from '../store/config'
 import { pageStore } from '../store/page'
+import { routerStore } from '../store/router'
 import { i18nStore } from '../store/i18n'
 
 const tr = i18nStore.tr
+const scrollRef = ref<HTMLElement | null>(null)
 
 const tabs = computed(() =>
   pageStore.openPages
@@ -15,7 +17,7 @@ const tabs = computed(() =>
 )
 
 function activate(pageId: string): void {
-  pageStore.openPage(pageId)
+  routerStore.open(pageId)
 }
 
 function close(event: MouseEvent, pageId: string): void {
@@ -26,11 +28,21 @@ function close(event: MouseEvent, pageId: string): void {
 function onAuxClick(event: MouseEvent, pageId: string): void {
   if (event.button === 1) close(event, pageId)
 }
+
+watch(
+  () => pageStore.activePageId,
+  async () => {
+    await nextTick()
+    const container = scrollRef.value
+    const active = container?.querySelector('.tabsbar__tab--active')
+    active?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+  }
+)
 </script>
 
 <template>
   <div class="tabsbar">
-    <div class="tabsbar__scroll">
+    <div ref="scrollRef" class="tabsbar__scroll">
       <button
         v-for="tab in tabs"
         :key="tab.pageId"

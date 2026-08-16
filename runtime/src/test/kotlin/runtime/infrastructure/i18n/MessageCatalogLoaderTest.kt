@@ -66,4 +66,16 @@ class MessageCatalogLoaderTest {
         assertEquals(setOf("en"), catalogs.keys)
         assertEquals("Search", catalogs["en"]?.get("core.table.search"))
     }
+
+    @Test
+    fun `discovers all core catalogs from classpath`() {
+        val loader = MessageCatalogLoader()
+        val catalogs = loader.loadFromClasspathAll("core")
+
+        assertTrue(catalogs.containsKey("en"), "expected 'en' catalog on classpath")
+        assertTrue(catalogs.containsKey("ru"), "expected 'ru' catalog on classpath")
+        assertEquals("Search", catalogs["en"]?.get("core.table.search"))
+        assertEquals("Поиск", catalogs["ru"]?.get("core.table.search"))
+        assertTrue(catalogs.values.all { it.keys.all { key -> key.startsWith("core.") } })
+    }
 }

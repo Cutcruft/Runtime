@@ -14,7 +14,7 @@ class InMemoryCommandRegistryTest {
     fun `should register and retrieve command by full id`() {
         val registry = InMemoryCommandRegistry()
         val command = object : Command("command", "Test command") {
-            override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
+            override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult {
                 return CommandResult.success()
             }
         }
@@ -27,7 +27,7 @@ class InMemoryCommandRegistryTest {
     fun `should throw on duplicate command id`() {
         val registry = InMemoryCommandRegistry()
         val command = object : Command("command") {
-            override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
+            override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult {
                 return CommandResult.success()
             }
         }
@@ -41,7 +41,7 @@ class InMemoryCommandRegistryTest {
     fun `should throw on invalid command name`() {
         assertThrows<IllegalArgumentException> {
             object : Command("invalid name") {
-                override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
+                override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult {
                     return CommandResult.success()
                 }
             }

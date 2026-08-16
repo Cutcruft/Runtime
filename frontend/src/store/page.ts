@@ -29,6 +29,13 @@ export const pageStore = {
     if (landing) this.openPage(landing)
   },
 
+  /** Set the active page from a URL deep-link / browser back-forward without touching history stacks. */
+  restore(pageId: string): void {
+    if (pageId === activePageId.value) return
+    if (existingIndex(pageId) === -1) openPages.value.push(pageId)
+    activePageId.value = pageId
+  },
+
   openPage(pageId: string): void {
     if (pageId === activePageId.value) return
     const index = existingIndex(pageId)

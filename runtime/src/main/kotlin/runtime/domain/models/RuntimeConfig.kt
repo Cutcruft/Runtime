@@ -7,13 +7,38 @@ data class RuntimeConfig(
     val plugins: PluginsConfig,
     val command: CommandConfig,
     val audit: AuditConfig,
+    val storage: StorageConfig,
+    val routing: RoutingConfig,
     val ui: UiConfig,
     val i18n: I18nConfig,
     val messages: Map<String, String>
 )
 
+/** URL routing of the shell. `mode`: `hash` (`#/page/<id>`) or `history` (`/page/<id>`). */
+data class RoutingConfig(
+    val mode: String,
+    val redirects: List<RedirectRule>
+)
+
+/** `from` matches the requested page id (deep-link, navigation.request, landing); resolves to `to`. */
+data class RedirectRule(
+    val from: String,
+    val to: String
+)
+
+data class StorageConfig(
+    val backend: String,
+    val enabled: Boolean,
+    val maxEntities: Int,
+    val eviction: String,
+    val directory: String,
+    val redisUrl: String?,
+    val dbUrl: String?
+)
+
 data class I18nConfig(
-    val defaultLocale: String
+    val defaultLocale: String,
+    val locales: List<String>
 )
 
 data class ServerConfig(
@@ -37,7 +62,11 @@ data class PluginsConfig(
 )
 
 data class CommandConfig(
-    val executorThreads: Int?
+    val executorThreads: Int?,
+    val maxConcurrency: Int?,
+    val queueWaitMs: Long?,
+    val timeoutMs: Long?,
+    val wsConcurrency: Int?
 )
 
 data class AuditConfig(
@@ -46,8 +75,10 @@ data class AuditConfig(
 )
 
 data class UiConfig(
-    val mainPlugin: String?,
+    val pluginOrder: List<String>,
     val landingPage: String?,
+    val navInclude: List<String>,
+    val navExclude: List<String>,
     val navigationComponentType: String,
     val pageComponentType: String,
     val appComponentType: String,

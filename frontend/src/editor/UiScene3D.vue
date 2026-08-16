@@ -9,6 +9,8 @@ import { toasts } from '../store/toasts'
 import { useCfg } from '../renderer/useConfig'
 import { useData } from '../renderer/useData'
 import { resolveParams } from '../renderer/bindingEngine'
+import { overlayService } from '../overlay/overlayService'
+import { subscribeEvent } from '../events/eventBus'
 import type {
   BindingContext,
   Scene3DConfig,
@@ -31,6 +33,7 @@ const hostEl = ref<HTMLElement | null>(null)
 
 const editable = computed(() => !cfg.value.readonly && cfg.value.disabled !== true)
 const height = computed(() => cfg.value.height)
+const componentId = computed(() => cfg.value.id)
 
 const data = computed(() => cfg.value.content)
 const { value, error } = useData(
@@ -53,6 +56,7 @@ let selectedSpecId: string | null = null
 
 let loaded = false
 let saveTimer: ReturnType<typeof setTimeout> | null = null
+let unsubEditorCommands: (() => void) | null = null
 
 const raycaster = new THREE.Raycaster()
 const pointer = new THREE.Vector2()
@@ -110,21 +114,33 @@ function scheduleSave(): void {
 }
 
 function contentFor(): string {
+  function serializeObject(obj: THREE.Object3D): Scene3DObjectSpec | null {
+    if (!obj.userData.kind) return null
+    const spec: Scene3DObjectSpec = {
+      id: obj.userData.specId as string,
+      kind: obj.userData.kind as Scene3DObjectKind,
+      position: [obj.position.x, obj.position.y, obj.position.z],
+      rotation: [obj.rotation.x, obj.rotation.y, obj.rotation.z],
+      scale: [obj.scale.x, obj.scale.y, obj.scale.z]
+    }
+    const color = obj.userData.color as string | undefined
+    if (color) spec.color = color
+    const modelUrl = obj.userData.modelUrl as string | undefined
+    if (modelUrl) spec.modelUrl = modelUrl
+    const children = obj.children
+      .map(serializeObject)
+      .filter((c): c is Scene3DObjectSpec => c !== null)
+    if (children.length) spec.children = children
+    return spec
+  }
+  const root: Scene3DObjectSpec[] = []
+  for (const obj of objects.values()) {
+    if (obj.parent !== scene) continue
+    const spec = serializeObject(obj)
+    if (spec) root.push(spec)
+  }
   const content: Scene3DContent = {
-    objects: [...objects.entries()].map(([id, obj]): Scene3DObjectSpec => {
-      const spec: Scene3DObjectSpec = {
-        id,
-        kind: (obj.userData.kind as Scene3DObjectKind) ?? 'box',
-        position: [obj.position.x, obj.position.y, obj.position.z],
-        rotation: [obj.rotation.x, obj.rotation.y, obj.rotation.z],
-        scale: [obj.scale.x, obj.scale.y, obj.scale.z]
-      }
-      const color = obj.userData.color as string | undefined
-      if (color) spec.color = color
-      const modelUrl = obj.userData.modelUrl as string | undefined
-      if (modelUrl) spec.modelUrl = modelUrl
-      return spec
-    }),
+    objects: root,
     background: currentBackground(),
     grid: cfg.value.grid
   }
@@ -164,7 +180,7 @@ function makePrimitive(kind: Scene3DObjectKind, spec?: Partial<Scene3DObjectSpec
   return mesh
 }
 
-function addObject(spec: Scene3DObjectSpec): void {
+function addObject(spec: Scene3DObjectSpec, parent?: THREE.Object3D): void {
   if (!scene) return
   let obj: THREE.Object3D
   if (spec.kind === 'model') {
@@ -184,6 +200,11 @@ function addObject(spec: Scene3DObjectSpec): void {
             placeholder.parent.remove(placeholder)
             placeholder.parent.add(model)
           }
+          while (placeholder.children.length) {
+            const child = placeholder.children[0]
+            placeholder.remove(child)
+            model.add(child)
+          }
           objects.set(spec.id, model)
         },
         undefined,
@@ -201,8 +222,13 @@ function addObject(spec: Scene3DObjectSpec): void {
   obj.userData.kind = spec.kind
   obj.userData.color = spec.color
   obj.userData.modelUrl = spec.modelUrl
+  obj.userData.specId = spec.id
   objects.set(spec.id, obj)
-  scene.add(obj)
+  const attachTo = parent ?? scene
+  attachTo.add(obj)
+  for (const child of spec.children ?? []) {
+    addObject(child, obj)
+  }
 }
 
 function clearObjects(): void {
@@ -262,6 +288,12 @@ function addPrimitive(kind: Scene3DObjectKind): void {
   scheduleSave()
 }
 
+function removeObjectFromMap(obj: THREE.Object3D): void {
+  obj.children.forEach(removeObjectFromMap)
+  const id = obj.userData.specId as string | undefined
+  if (id) objects.delete(id)
+}
+
 function deleteSelected(): void {
   if (!editable.value || !selectedSpecId) return
   const specId = selectedSpecId
@@ -274,8 +306,8 @@ function deleteSelected(): void {
         mats.forEach((m) => m?.dispose())
       }
     })
+    removeObjectFromMap(obj)
     obj.parent?.remove(obj)
-    objects.delete(specId)
   }
   selected = null
   selectedSpecId = null
@@ -290,6 +322,104 @@ function resetCamera(): void {
   camera.updateProjectionMatrix()
   controls.target.set(setup.target[0], setup.target[1], setup.target[2])
   controls.update()
+}
+
+function objectAtPointer(e: MouseEvent): string | null {
+  if (!renderer || !camera) return null
+  const rect = renderer.domElement.getBoundingClientRect()
+  const px = ((e.clientX - rect.left) / rect.width) * 2 - 1
+  const py = -((e.clientY - rect.top) / rect.height) * 2 + 1
+  raycaster.setFromCamera(new THREE.Vector2(px, py), camera)
+  const hits = raycaster.intersectObjects([...objects.values()], true)
+  if (!hits.length) return null
+  let node: THREE.Object3D | null = hits[0].object
+  while (node) {
+    if (node.userData.kind) {
+      const found = [...objects.keys()].find((id) => objects.get(id) === node)
+      if (found) return found
+      break
+    }
+    node = node.parent
+  }
+  return (hits[0].object.userData.specId as string | null) ?? null
+}
+
+function onContextMenu(e: MouseEvent): void {
+  if (!editable.value) return
+  const specId = objectAtPointer(e)
+  if (!specId) return
+  selectSpec(specId)
+  const opened = overlayService.onGesture({
+    event: 'contextmenu',
+    componentType: 'Scene3D',
+    objectType: 'scene3d.object',
+    componentId: componentId.value,
+    row: { id: specId },
+    x: e.clientX,
+    y: e.clientY
+  })
+  if (opened) e.preventDefault()
+}
+
+function serializeObjectForSpec(obj: THREE.Object3D): Scene3DObjectSpec | null {
+  if (!obj.userData.kind) return null
+  const spec: Scene3DObjectSpec = {
+    id: obj.userData.specId as string,
+    kind: obj.userData.kind as Scene3DObjectKind,
+    position: [obj.position.x, obj.position.y, obj.position.z],
+    rotation: [obj.rotation.x, obj.rotation.y, obj.rotation.z],
+    scale: [obj.scale.x, obj.scale.y, obj.scale.z]
+  }
+  const color = obj.userData.color as string | undefined
+  if (color) spec.color = color
+  const modelUrl = obj.userData.modelUrl as string | undefined
+  if (modelUrl) spec.modelUrl = modelUrl
+  const children = obj.children
+    .map(serializeObjectForSpec)
+    .filter((c): c is Scene3DObjectSpec => c !== null)
+  if (children.length) spec.children = children
+  return spec
+}
+
+function duplicateSelected(): void {
+  if (!editable.value || !selectedSpecId) return
+  const src = objects.get(selectedSpecId)
+  if (!src) return
+  const serialized = serializeObjectForSpec(src)
+  if (!serialized) return
+  const spec: Scene3DObjectSpec = {
+    ...serialized,
+    id: `obj_${Date.now().toString(36)}`,
+    position: [src.position.x + 0.6, src.position.y, src.position.z + 0.6]
+  }
+  const parentObj = src.parent && src.parent !== scene ? src.parent : undefined
+  addObject(spec, parentObj)
+  selectSpec(spec.id)
+  scheduleSave()
+}
+
+interface EditorCommandPayload {
+  editor?: string
+  command?: string
+  componentId?: string
+  params?: Record<string, unknown>
+}
+
+function handleEditorCommand(payload: EditorCommandPayload): void {
+  if (payload.editor !== 'scene3d') return
+  if (payload.componentId && payload.componentId !== componentId.value) return
+  if (!editable.value) return
+  const id = payload.params?.id as string | undefined
+  if (!id || !objects.has(id)) return
+  selectSpec(id)
+  switch (payload.command) {
+    case 'delete':
+      deleteSelected()
+      break
+    case 'duplicate':
+      duplicateSelected()
+      break
+  }
 }
 
 function onPointerDown(e: PointerEvent): void {
@@ -347,6 +477,15 @@ function setupScene(): void {
   setBackground(currentBackground())
   container.appendChild(renderer.domElement)
 
+  const fog = cfg.value.fog
+  if (fog) {
+    scene.fog = new THREE.Fog(
+      fog.color ? new THREE.Color(fog.color) : new THREE.Color(currentBackground()),
+      fog.near ?? 8,
+      fog.far ?? 25
+    )
+  }
+
   const lights = lightSetup()
   scene.add(new THREE.AmbientLight(0xffffff, lights.ambient))
   const dir = new THREE.DirectionalLight(0xffffff, lights.directional)
@@ -365,6 +504,7 @@ function setupScene(): void {
 
   renderer.domElement.addEventListener('pointerdown', onPointerDown)
   renderer.domElement.addEventListener('pointerup', onPointerUp)
+  renderer.domElement.addEventListener('contextmenu', onContextMenu)
 
   resizeObserver = new ResizeObserver(() => {
     const w = container.clientWidth || 1
@@ -394,17 +534,22 @@ watch(editable, (next) => {
 onMounted(() => {
   setupScene()
   if (error.value) toasts.push({ message: error.value, kind: 'error' })
+  unsubEditorCommands = subscribeEvent((event) => {
+    if (event.kind === 'editor.command') handleEditorCommand(event.payload as EditorCommandPayload)
+  })
 })
 
 onBeforeUnmount(() => {
   disposed = true
   if (rafId) cancelAnimationFrame(rafId)
   if (saveTimer) clearTimeout(saveTimer)
+  unsubEditorCommands?.()
   resizeObserver?.disconnect()
   controls?.dispose()
   clearObjects()
   renderer?.dispose()
   if (hostEl.value && renderer?.domElement) {
+    renderer.domElement.removeEventListener('contextmenu', onContextMenu)
     hostEl.value.removeChild(renderer.domElement)
   }
   scene = null

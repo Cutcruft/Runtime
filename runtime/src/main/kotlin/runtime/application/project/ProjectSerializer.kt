@@ -9,9 +9,13 @@ import runtime.domain.models.ProjectId
 import runtime.domain.obj.ObjectId
 import runtime.domain.obj.ObjectList
 import runtime.domain.repositories.EntityRegistry
-import runtime.infrastructure.obj.SynchronizedObjectList
+import runtime.domain.storage.EntityStore
+import runtime.infrastructure.obj.StoreObjectList
 
-class ProjectSerializer(private val entityRegistry: EntityRegistry) {
+class ProjectSerializer(
+    private val entityRegistry: EntityRegistry,
+    private val store: EntityStore
+) {
     private val mapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
 
     fun serialize(project: Project): String {
@@ -29,14 +33,23 @@ class ProjectSerializer(private val entityRegistry: EntityRegistry) {
 
     fun deserialize(projectId: ProjectId, data: String): Project {
         val root = mapper.readTree(data)
-        val objectLists = mutableMapOf<EntityType, ObjectList<*>>()
+        val types = mutableListOf<EntityType>()
+        root.get("objects")?.let { objectsNode ->
+            val fields = objectsNode.fields()
+            while (fields.hasNext()) {
+                val (typeStr, _) = fields.next()
+                types += EntityType(typeStr)
+            }
+        }
+        store.open(projectId, types.toSet())
+        val objectLists = types.associateWith { StoreObjectList<Any>(store, projectId, it) as ObjectList<Any> }
         root.get("objects")?.let { objectsNode ->
             val fields = objectsNode.fields()
             while (fields.hasNext()) {
                 val (typeStr, entriesNode) = fields.next()
                 val type = EntityType(typeStr)
                 val definition = entityRegistry.get(type)
-                val objectList = SynchronizedObjectList<Any>(type)
+                val objectList = objectLists.getValue(type)
                 entriesNode.forEach { entry ->
                     val objectId = ObjectId(UUID.fromString(entry.get("id").asText()))
                     val valueNode = entry.get("value")
@@ -47,7 +60,6 @@ class ProjectSerializer(private val entityRegistry: EntityRegistry) {
                     }
                     objectList.create(objectId, value as Any)
                 }
-                objectLists[type] = objectList
             }
         }
         return Project(projectId, objectLists)

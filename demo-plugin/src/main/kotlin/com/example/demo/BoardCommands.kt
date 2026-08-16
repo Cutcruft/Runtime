@@ -2,11 +2,20 @@ package com.example.demo
 
 import runtime.domain.command.Command
 import runtime.domain.command.CommandContext
+import runtime.domain.command.CommandParameter
 import runtime.domain.command.CommandResult
 import runtime.domain.obj.ObjectRef
 
-class CreateBoardCommand : Command("createboard", "Create a board", "Boards") {
-    override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
+class CreateBoardCommand : Command(
+    "createboard",
+    "Create a board",
+    "Boards",
+    parameters = listOf(
+        CommandParameter("name", "string", required = true, description = "Board name"),
+        CommandParameter("description", "string", required = false, description = "Board description")
+    )
+) {
+    override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult {
         val p = params as? Map<*, *> ?: return CommandResult.error("Missing parameters")
         val name = p["name"] as? String ?: return CommandResult.error("Missing name")
         val description = p["description"] as? String ?: ""
@@ -19,7 +28,7 @@ class CreateBoardCommand : Command("createboard", "Create a board", "Boards") {
 }
 
 class ListBoardsCommand : Command("listboards", "List all boards", "Boards") {
-    override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
+    override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult {
         val list = context.objectList<Board>(BOARD_TYPE)
         val rows = list.list().mapNotNull { ref ->
             val board = list.get(ref.objectId) ?: return@mapNotNull null
@@ -33,8 +42,13 @@ class ListBoardsCommand : Command("listboards", "List all boards", "Boards") {
     }
 }
 
-class DeleteBoardCommand : Command("deleteboard", "Delete a board and its tasks", "Boards") {
-    override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
+class DeleteBoardCommand : Command(
+    "deleteboard",
+    "Delete a board and its tasks",
+    "Boards",
+    parameters = listOf(CommandParameter("id", "uuid", required = true, description = "Board id"))
+) {
+    override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult {
         val p = params as? Map<*, *> ?: return CommandResult.error("Missing parameters")
         val id = parseId(p) ?: return CommandResult.error("Missing or invalid id")
         return context.withProjectLock {

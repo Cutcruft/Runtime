@@ -36,14 +36,18 @@ import runtime.infrastructure.i18n.MessageCatalogLoader
 import runtime.infrastructure.inmem.InMemoryAuditLog
 import runtime.infrastructure.inmem.InMemoryCommandRegistry
 import runtime.infrastructure.inmem.InMemoryEntityRegistry
+import runtime.infrastructure.inmem.InMemoryInfrastructureRegistry
 import runtime.infrastructure.inmem.InMemoryProjectRepository
 import runtime.infrastructure.inmem.InMemorySessionRepository
-import runtime.infrastructure.obj.SynchronizedObjectList
+import runtime.infrastructure.infrastructure.InfrastructureClientImpl
+import runtime.infrastructure.infrastructure.InfrastructureService
 import runtime.infrastructure.plugin.PluginClassLoader
 import runtime.infrastructure.plugin.PluginContextImpl
 import runtime.infrastructure.plugin.PluginDescriptorLoader
 import runtime.infrastructure.plugin.PluginLoader
 import runtime.infrastructure.plugin.PluginAssetsService
+import runtime.infrastructure.script.KotlinScriptEngine
+import runtime.infrastructure.storage.StorageFactory
 import runtime.infrastructure.web.WebServer
 import runtime.infrastructure.ws.WsEventPublisher
 
@@ -55,12 +59,14 @@ fun main(args: Array<String>) {
 
         val entityRegistry = InMemoryEntityRegistry()
         val commandRegistry: CommandRegistry = InMemoryCommandRegistry()
+        val infrastructureRegistry = InMemoryInfrastructureRegistry()
         val projectRepository = InMemoryProjectRepository()
         val sessionRepository: SessionRepository = InMemorySessionRepository()
 
-        val projectFactory = ProjectFactory(entityRegistry) { SynchronizedObjectList<Any>(it) }
-        val projectSerializer = ProjectSerializer(entityRegistry)
-        val projectService = ProjectService(projectRepository, projectFactory, projectSerializer)
+        val entityStore = StorageFactory().create(config.storage, entityRegistry)
+        val projectFactory = ProjectFactory(entityRegistry, entityStore)
+        val projectSerializer = ProjectSerializer(entityRegistry, entityStore)
+        val projectService = ProjectService(projectRepository, projectFactory, projectSerializer, entityStore)
 
         val auditService = AuditService(
             enabled = config.audit.enabled,
@@ -71,16 +77,15 @@ fun main(args: Array<String>) {
         val dispatcher = config.command.executorThreads?.let { threads ->
             Executors.newFixedThreadPool(threads).asCoroutineDispatcher()
         } ?: Dispatchers.Default
+        // Cap command concurrency at the pool size so in-flight commands never
+        // exceed the number of executor threads (no unbounded queuing).
+        val poolSize = config.command.executorThreads ?: Runtime.getRuntime().availableProcessors()
+        val maxConcurrency = (config.command.maxConcurrency ?: poolSize).coerceAtMost(poolSize)
 
         val activeSessions = mutableMapOf<String, DefaultWebSocketSession>()
         val sessionManager = SessionManager(sessionRepository, projectRepository)
         val eventPublisher = WsEventPublisher(sessionManager, activeSessions)
-        val commandExecutor = CommandExecutor(
-            commandRegistry, auditService, projectLocks, messages, eventPublisher, dispatcher
-        )
-        val dispatchService = CommandDispatchService(projectService, commandExecutor, sessionManager, messages, eventPublisher)
-
-        registerBuiltInCommands(commandRegistry, projectService, messages)
+        val infrastructureService = InfrastructureService(infrastructureRegistry, InfrastructureClientImpl())
 
         val uiDefinitions = mutableListOf<RegisteredUi>()
         val pluginLoader = PluginLoader(
@@ -88,6 +93,7 @@ fun main(args: Array<String>) {
             PluginDescriptorLoader(config.plugins.configFileName, config.plugins.apiVersion)
         )
         val descriptors = pluginLoader.discover()
+
         val pluginManager = PluginManager(
             resolver = DependencyResolver(),
             instantiate = { descriptor ->
@@ -95,7 +101,7 @@ fun main(args: Array<String>) {
                 clazz.getDeclaredConstructor().newInstance() as Plugin
             },
             createContext = { pluginId ->
-                PluginContextImpl(pluginId, entityRegistry, commandRegistry) { ui ->
+                PluginContextImpl(pluginId, entityRegistry, commandRegistry, infrastructureRegistry) { ui ->
                     uiDefinitions += RegisteredUi(pluginId = pluginId, definition = ui)
                 }
             },
@@ -103,14 +109,42 @@ fun main(args: Array<String>) {
         )
         val loadedPluginIds = pluginManager.bootstrap(descriptors).toSet()
 
+        // Build the script engine after bootstrap so plugin class loaders exist; scripts
+        // must resolve plugin model classes through the plugin's own loader for identity.
+        val scriptEngine = KotlinScriptEngine(
+            pluginJars = descriptors.mapNotNull { descriptor ->
+                runCatching { java.io.File(descriptor.jarPath) }.getOrNull()
+            },
+            pluginLoaders = pluginLoader.loadedClassLoaders()
+        )
+        val commandExecutor = CommandExecutor(
+            commandRegistry, auditService, projectLocks, messages, eventPublisher, dispatcher,
+            maxConcurrency = maxConcurrency,
+            queueWaitMs = config.command.queueWaitMs ?: 5_000,
+            timeoutMs = config.command.timeoutMs,
+            infrastructure = infrastructureService,
+            scriptEngine = scriptEngine
+        )
+        val dispatchService = CommandDispatchService(projectService, commandExecutor, sessionManager, messages, eventPublisher)
+
+        registerBuiltInCommands(commandRegistry, projectService, messages)
+
         val messageRegistry = MessageRegistry(config.i18n.defaultLocale)
         val messageCatalogLoader = MessageCatalogLoader()
-        messageCatalogLoader
-            .loadFromClasspath("core", "/messages/en.json")
-            .forEach { (locale, entries) -> messageRegistry.register(locale, entries) }
-        messageCatalogLoader
-            .loadFromClasspath("core", "/messages/ru.json")
-            .forEach { (locale, entries) -> messageRegistry.register(locale, entries) }
+        val coreCatalogs = messageCatalogLoader.loadFromClasspathAll("core")
+        val allowedLocales = config.i18n.locales.ifEmpty { coreCatalogs.keys.sorted() }
+        allowedLocales.forEach { locale ->
+            val entries = coreCatalogs[locale]
+                ?: throw IllegalStateException(
+                    "Core message catalog for locale '$locale' is missing (expected messages/$locale.json on the classpath)"
+                )
+            messageRegistry.register(locale, entries)
+        }
+        if (config.i18n.defaultLocale !in messageRegistry.locales()) {
+            throw IllegalStateException(
+                "Default locale '${config.i18n.defaultLocale}' has no core message catalog"
+            )
+        }
         descriptors.forEach { descriptor ->
             messageCatalogLoader
                 .loadFromJar(descriptor.id.value, descriptor.jarPath)
@@ -118,7 +152,7 @@ fun main(args: Array<String>) {
         }
 
         val workspaceConfiguration: WorkspaceConfiguration =
-            WorkspaceConfigurationBuilder(config.ui, config.ws.path, messageRegistry)
+            WorkspaceConfigurationBuilder(config.ui, config.ws.path, messageRegistry, config.routing)
                 .build(uiDefinitions, commandRegistry, entityRegistry, loadedPluginIds)
 
         val webServer = WebServer(
@@ -134,6 +168,7 @@ fun main(args: Array<String>) {
 
         println("Runtime started on http://${config.server.host}:${config.server.port}")
         java.lang.Runtime.getRuntime().addShutdownHook(Thread {
+            entityStore.closeAll()
             println("Shutting down Runtime...")
         })
 

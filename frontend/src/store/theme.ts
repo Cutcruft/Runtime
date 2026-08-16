@@ -74,8 +74,12 @@ export function applyTheme(): void {
   const root = document.documentElement
   root.dataset.theme = effective
   const tokens = {
-    ...(effective === 'dark' ? DARK_TOKENS : LIGHT_TOKENS),
-    ...(configStore.theme?.tokens ?? {})
+    ...(effective === 'dark' ? DARK_TOKENS : LIGHT_TOKENS)
+  }
+  for (const [name, value] of Object.entries(configStore.theme?.tokens ?? {})) {
+    if (name.endsWith('.light') && effective !== 'light') continue
+    if (name.endsWith('.dark') && effective !== 'dark') continue
+    tokens[name.replace(/\.(light|dark)$/, '')] = value
   }
   for (const [name, value] of Object.entries(tokens)) {
     root.style.setProperty(`--rt-${name}`, value)

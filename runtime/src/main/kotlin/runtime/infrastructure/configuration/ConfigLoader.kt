@@ -11,8 +11,11 @@ import runtime.domain.models.I18nConfig
 import runtime.domain.models.NavigationFields
 import runtime.domain.models.PageFields
 import runtime.domain.models.PluginsConfig
+import runtime.domain.models.RedirectRule
 import runtime.domain.models.RuntimeConfig
+import runtime.domain.models.RoutingConfig
 import runtime.domain.models.ServerConfig
+import runtime.domain.models.StorageConfig
 import runtime.domain.models.ThemeConfig
 import runtime.domain.models.UiConfig
 import runtime.domain.models.WsConfig
@@ -47,8 +50,18 @@ class ConfigLoader(
         val plugins = section(map, "plugins")
         val command = section(map, "command")
         val audit = section(map, "audit")
+        val storage = section(map, "storage")
+        val storageMemory = section(storage, "memory")
+        val storageFiles = section(storage, "files")
+        val storageRedis = section(storage, "redis")
+        val storageDb = section(storage, "db")
         val ui = section(map, "ui")
         val i18n = section(map, "i18n")
+        val routing = section(map, "routing")
+        val routingMode = routing["mode"] as? String ?: "hash"
+        if (routingMode !in setOf("hash", "history")) {
+            throw IllegalArgumentException("Unsupported routing.mode '$routingMode' (supported: hash, history)")
+        }
         return RuntimeConfig(
             server = ServerConfig(
                 host = server["host"] as String,
@@ -65,15 +78,40 @@ class ConfigLoader(
                 apiVersion = (plugins["apiVersion"] as Number).toInt()
             ),
             command = CommandConfig(
-                executorThreads = (command["executorThreads"] as? Number)?.toInt()
+                executorThreads = (command["executorThreads"] as? Number)?.toInt(),
+                maxConcurrency = (command["maxConcurrency"] as? Number)?.toInt(),
+                queueWaitMs = (command["queueWaitMs"] as? Number)?.toLong(),
+                timeoutMs = (command["timeoutMs"] as? Number)?.toLong(),
+                wsConcurrency = (command["wsConcurrency"] as? Number)?.toInt()
             ),
             audit = AuditConfig(
                 enabled = audit["enabled"] as Boolean,
                 maxEventsPerProject = (audit["maxEventsPerProject"] as Number).toInt()
             ),
+            storage = StorageConfig(
+                backend = storage["backend"] as? String ?: "memory",
+                enabled = storage["enabled"] as? Boolean ?: false,
+                maxEntities = (storageMemory["maxEntities"] as? Number)?.toInt() ?: -1,
+                eviction = storage["eviction"] as? String ?: "lru",
+                directory = storageFiles["directory"] as? String ?: "data",
+                redisUrl = storageRedis["url"] as? String,
+                dbUrl = storageDb["url"] as? String
+            ),
+            routing = RoutingConfig(
+                mode = routingMode,
+                redirects = (routing["redirects"] as? List<*>)
+                    ?.filterIsInstance<Map<*, *>>()
+                    ?.mapNotNull { rule ->
+                        val from = rule["from"] as? String ?: return@mapNotNull null
+                        val to = rule["to"] as? String ?: return@mapNotNull null
+                        RedirectRule(from, to)
+                    } ?: emptyList()
+            ),
             ui = UiConfig(
-                mainPlugin = ui["mainPlugin"] as? String,
+                pluginOrder = (ui["pluginOrder"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
                 landingPage = ui["landingPage"] as? String,
+                navInclude = (section(ui, "nav")["include"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
+                navExclude = (section(ui, "nav")["exclude"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
                 navigationComponentType = ui["navigationComponentType"] as String,
                 pageComponentType = ui["pageComponentType"] as String,
                 appComponentType = ui["appComponentType"] as String,
@@ -112,7 +150,8 @@ class ConfigLoader(
             ),
             messages = section(map, "messages").mapValues { (_, value) -> value.toString() },
             i18n = I18nConfig(
-                defaultLocale = i18n["defaultLocale"] as? String ?: "en"
+                defaultLocale = i18n["defaultLocale"] as? String ?: "en",
+                locales = (i18n["locales"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
             )
         )
     }

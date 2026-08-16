@@ -50,6 +50,56 @@ class MessageCatalogLoader {
         }.getOrElse { emptyMap() }
     }
 
+    /**
+     * Discovers every `messages/<locale>.json` catalog shipped by the runtime itself
+     * (its own classes dir or JAR — i.e. the code source of this class), namespacing
+     * keys with [prefix]. Scans only the runtime's own resources so catalogs bundled
+     * in dependency/plugin JARs (e.g. the demo plugin) never pollute core keys.
+     */
+    fun loadFromClasspathAll(prefix: String): Map<String, Map<String, String>> {
+        val result = mutableMapOf<String, Map<String, String>>()
+        val codeSource = javaClass.protectionDomain.codeSource?.location ?: return result
+        when (codeSource.protocol) {
+            "file" -> {
+                val location = runCatching { File(codeSource.toURI()) }.getOrNull() ?: return result
+                if (location.isDirectory) {
+                    File(location, "messages")
+                        .listFiles { file -> file.isFile && file.name.endsWith(".json") }
+                        .orEmpty()
+                        .forEach { file ->
+                            val locale = file.name.removeSuffix(".json")
+                            if (localeRegex.matches(locale)) {
+                                runCatching { result[locale] = flatten(parse(file.readText()), prefix) }
+                            }
+                        }
+                } else if (location.name.endsWith(".jar")) {
+                    loadMessagesFromJarPath(location.absolutePath, prefix, result)
+                }
+            }
+        }
+        return result
+    }
+
+    private fun loadMessagesFromJarPath(
+        jarPath: String,
+        prefix: String,
+        result: MutableMap<String, Map<String, String>>
+    ) {
+        JarFile(jarPath).use { jar ->
+            jar.entries().asSequence().forEach { entry ->
+                if (entry.isDirectory) return@forEach
+                val name = entry.name
+                if (!name.startsWith("messages/") || !name.endsWith(".json")) return@forEach
+                val locale = name.removePrefix("messages/").removeSuffix(".json")
+                if (!localeRegex.matches(locale)) return@forEach
+                runCatching {
+                    val text = jar.getInputStream(entry).use { it.readBytes().toString(Charsets.UTF_8) }
+                    result[locale] = flatten(parse(text), prefix = prefix)
+                }
+            }
+        }
+    }
+
     @Suppress("UNCHECKED_CAST")
     private fun parse(text: String): Map<String, Any> =
         (objectMapper.readValue(text, Map::class.java) as? Map<String, Any>) ?: emptyMap()

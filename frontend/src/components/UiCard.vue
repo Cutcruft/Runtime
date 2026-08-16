@@ -1,11 +1,16 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useCfg } from '../renderer/useConfig'
+import { useContainerQuery } from '../renderer/useContainerQuery'
 import { runAction, findAction, resolveParams } from '../renderer/bindingEngine'
 import { sessionStore } from '../store/session'
 import ComponentHost from './ComponentHost.vue'
 import type { BindingContext, CardConfig } from '../protocol/componentSpec'
 
 const props = defineProps<{ config: Record<string, unknown>; context?: BindingContext }>()
+
+const root = ref<HTMLElement | null>(null)
+const cq = useContainerQuery(root)
 
 const cfg = useCfg<CardConfig>(props.config, {
   bordered: true,
@@ -28,8 +33,9 @@ async function headerActionClick(
 
 <template>
   <section
+    ref="root"
     class="ui-card"
-    :class="[cfg.className, { 'ui-card--bordered': cfg.bordered }]"
+    :class="[cfg.className, `ui-card--cq-${cq}`, { 'ui-card--bordered': cfg.bordered }]"
     :style="cfg.style"
   >
     <header v-if="cfg.title || cfg.subtitle || cfg.headerActions?.length" class="ui-card__header">
@@ -94,5 +100,13 @@ async function headerActionClick(
   display: flex;
   flex-direction: column;
   gap: var(--rt-space);
+}
+.ui-card--cq-sm .ui-card__header {
+  flex-direction: column;
+  align-items: flex-start;
+  padding: var(--rt-space-sm) var(--rt-space);
+}
+.ui-card--cq-sm .ui-card__title {
+  font-size: var(--rt-font-size);
 }
 </style>

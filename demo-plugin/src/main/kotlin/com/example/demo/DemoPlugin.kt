@@ -23,6 +23,7 @@ class DemoPlugin : Plugin() {
         context.registerEntity(BoardDefinition)
         context.registerEntity(TaskDefinition)
         context.registerEntity(DocumentDefinition)
+        context.registerEntity(ScriptDefinition)
 
         context.registerCommand(CreateBoardCommand())
         context.registerCommand(ListBoardsCommand())
@@ -32,11 +33,31 @@ class DemoPlugin : Plugin() {
         context.registerCommand(CompleteTaskCommand())
         context.registerCommand(DeleteTaskCommand())
         context.registerCommand(TaskStatsCommand())
+        context.registerCommand(TaskReportCommand())
+        context.registerCommand(ReorderTasksCommand())
+
+        context.registerCommand(TaskScript.createCommand())
+        context.registerCommand(TaskScript.updateCommand())
+        context.registerCommand(TaskScript.deleteCommand())
+        context.registerCommand(TaskScript.validateCommand())
+
+        context.registerDataSource(EchoDataSource())
+        context.registerCommand(EchoCommand())
+        context.registerCommand(SeedTasksPipeline())
+        context.registerCommand(PipelineWithInput())
+        context.registerCommand(IgnoreErrorPipeline())
+        context.registerCommand(FailFastPipeline())
         context.registerCommand(CreateDocumentCommand())
         context.registerCommand(ListDocumentsCommand())
         context.registerCommand(LoadDocumentCommand())
         context.registerCommand(SaveDocumentCommand())
         context.registerCommand(MentionsCommand())
+        context.registerCommand(RunScriptCommand())
+        context.registerCommand(CreateScriptCommand())
+        context.registerCommand(UpdateScriptCommand())
+        context.registerCommand(DeleteScriptCommand())
+        context.registerCommand(ListScriptsCommand())
+        context.registerCommand(ValidateScriptCommand())
 
         registerUi(context)
     }
@@ -194,6 +215,68 @@ class DemoPlugin : Plugin() {
                                                         )
                                                     )
                                                 )
+                                            ),
+                                            mapOf(
+                                                "id" to "widgets",
+                                                "label" to "{{demo.tabs.widgets}}",
+                                                "components" to listOf(
+                                                    mapOf(
+                                                        "type" to "Space",
+                                                        "config" to mapOf(
+                                                            "gap" to "0.5rem",
+                                                            "align" to "center",
+                                                            "components" to listOf(
+                                                                mapOf("type" to "Avatar", "config" to mapOf("name" to "Alice Chen")),
+                                                                mapOf("type" to "Avatar", "config" to mapOf("name" to "Bob Müller", "tone" to "blue")),
+                                                                mapOf("type" to "Avatar", "config" to mapOf("src" to "assets/icon-logo.svg", "tone" to "green")),
+                                                                mapOf("type" to "Avatar", "config" to mapOf("fallback" to "CK", "tone" to "purple"))
+                                                            )
+                                                        )
+                                                    ),
+                                                    mapOf(
+                                                        "type" to "Progress",
+                                                        "config" to mapOf(
+                                                            "value" to 42,
+                                                            "showLabel" to true,
+                                                            "tone" to "green",
+                                                            "data" to mapOf("command" to "demo.stats", "entityType" to "demo.task"),
+                                                            "valueKey" to "donePercent"
+                                                        )
+                                                    ),
+                                                    mapOf(
+                                                        "type" to "Accordion",
+                                                        "config" to mapOf(
+                                                            "items" to listOf(
+                                                                mapOf(
+                                                                    "id" to "faq-1",
+                                                                    "label" to "{{demo.acc.q1}}",
+                                                                    "open" to true,
+                                                                    "components" to listOf(mapOf("type" to "Text", "config" to mapOf("text" to "{{demo.acc.a1}}")))
+                                                                ),
+                                                                mapOf(
+                                                                    "id" to "faq-2",
+                                                                    "label" to "{{demo.acc.q2}}",
+                                                                    "components" to listOf(mapOf("type" to "Text", "config" to mapOf("text" to "{{demo.acc.a2}}")))
+                                                                )
+                                                            )
+                                                        )
+                                                    ),
+                                                    mapOf(
+                                                        "type" to "List",
+                                                        "config" to mapOf(
+                                                            "data" to mapOf("command" to "demo.list", "entityType" to "demo.task"),
+                                                            "labelField" to "title",
+                                                            "valueField" to "status",
+                                                            "sortable" to true,
+                                                            "actions" to listOf(
+                                                                mapOf(
+                                                                    "event" to "reorder",
+                                                                    "spec" to mapOf("action" to "command", "command" to "demo.reordertasks", "params" to mapOf("ids" to "\$payload.ids"))
+                                                                )
+                                                            )
+                                                        )
+                                                    )
+                                                )
                                             )
                                         )
                                     )
@@ -207,7 +290,7 @@ class DemoPlugin : Plugin() {
         context.registerUi(
             UiComponent(
                 "Navigation",
-                mapOf("id" to "nav-boards", "label" to "{{demo.page.boards}}", "pageId" to "boards", "order" to 1, "group" to "{{demo.nav.group.overview}}", "icon" to "▦")
+                mapOf("id" to "nav-boards", "label" to "{{demo.page.boards}}", "pageId" to "boards", "order" to 1, "group" to "{{demo.nav.group.overview}}", "icon" to "assets/icon-logo.svg")
             )
         )
 
@@ -507,6 +590,114 @@ class DemoPlugin : Plugin() {
                 )
             )
         )
+        context.registerUi(
+            UiComponent(
+                "Overlay",
+                mapOf(
+                    "id" to "canvas-element-menu",
+                    "kind" to "menu",
+                    "items" to listOf(
+                        mapOf(
+                            "label" to "{{demo.canvas.menu.front}}",
+                            "icon" to "⇡",
+                            "spec" to mapOf(
+                                "action" to "editor",
+                                "editor" to "canvas",
+                                "command" to "front",
+                                "params" to mapOf("id" to "\$row.id")
+                            )
+                        ),
+                        mapOf(
+                            "label" to "{{demo.canvas.menu.back}}",
+                            "icon" to "⇣",
+                            "spec" to mapOf(
+                                "action" to "editor",
+                                "editor" to "canvas",
+                                "command" to "back",
+                                "params" to mapOf("id" to "\$row.id")
+                            )
+                        ),
+                        mapOf(
+                            "label" to "{{demo.canvas.menu.duplicate}}",
+                            "icon" to "⧉",
+                            "spec" to mapOf(
+                                "action" to "editor",
+                                "editor" to "canvas",
+                                "command" to "duplicate",
+                                "params" to mapOf("id" to "\$row.id")
+                            )
+                        ),
+                        mapOf("divider" to true),
+                        mapOf(
+                            "label" to "{{demo.canvas.menu.delete}}",
+                            "icon" to "✕",
+                            "spec" to mapOf(
+                                "action" to "editor",
+                                "editor" to "canvas",
+                                "command" to "delete",
+                                "params" to mapOf("id" to "\$row.id")
+                            ),
+                            "confirm" to "{{demo.canvas.menu.delete.confirm}}",
+                            "danger" to true
+                        )
+                    )
+                )
+            )
+        )
+        context.registerUi(
+            UiComponent(
+                "OverlayTrigger",
+                mapOf(
+                    "event" to "contextmenu",
+                    "objectType" to "canvas.element",
+                    "overlay" to "canvas-element-menu"
+                )
+            )
+        )
+        context.registerUi(
+            UiComponent(
+                "Overlay",
+                mapOf(
+                    "id" to "scene-object-menu",
+                    "kind" to "menu",
+                    "items" to listOf(
+                        mapOf(
+                            "label" to "{{demo.scene.menu.duplicate}}",
+                            "icon" to "⧉",
+                            "spec" to mapOf(
+                                "action" to "editor",
+                                "editor" to "scene3d",
+                                "command" to "duplicate",
+                                "params" to mapOf("id" to "\$row.id")
+                            )
+                        ),
+                        mapOf("divider" to true),
+                        mapOf(
+                            "label" to "{{demo.scene.menu.delete}}",
+                            "icon" to "✕",
+                            "spec" to mapOf(
+                                "action" to "editor",
+                                "editor" to "scene3d",
+                                "command" to "delete",
+                                "params" to mapOf("id" to "\$row.id")
+                            ),
+                            "confirm" to "{{demo.scene.menu.delete.confirm}}",
+                            "danger" to true
+                        )
+                    )
+                )
+            )
+        )
+        context.registerUi(
+            UiComponent(
+                "OverlayTrigger",
+                mapOf(
+                    "event" to "contextmenu",
+                    "objectType" to "scene3d.object",
+                    "overlay" to "scene-object-menu"
+                )
+            )
+        )
     }
 
     private fun registerEditorPages(context: PluginContext) {
@@ -574,8 +765,16 @@ class DemoPlugin : Plugin() {
                                         "grid" to true,
                                         "panning" to true,
                                         "mousewheel" to true,
-                                        "layout" to mapOf("gapX" to 40, "gapY" to 40),
-                                        "toolbar" to listOf("addRect", "addEllipse", "addEdge", "layout", "fit", "delete")
+                                        "layout" to mapOf("type" to "dagre", "gapX" to 40, "gapY" to 60),
+                                        "stencil" to mapOf(
+                                            "nodes" to listOf(
+                                                mapOf("shape" to "rect", "label" to "{{demo.stencil.rect}}", "fill" to "#f6f8fb"),
+                                                mapOf("shape" to "ellipse", "label" to "{{demo.stencil.ellipse}}", "fill" to "#eef4ff"),
+                                                mapOf("shape" to "rect", "label" to "{{demo.stencil.process}}", "fill" to "#e7f6ec", "stroke" to "#10b981"),
+                                                mapOf("shape" to "rect", "label" to "{{demo.stencil.decision}}", "fill" to "#fef3c7", "stroke" to "#f59e0b")
+                                            )
+                                        ),
+                                        "toolbar" to listOf("undo", "redo", "addRect", "addEllipse", "addEdge", "layout", "fit", "delete")
                                     )
                                 )
                             )
@@ -599,6 +798,7 @@ class DemoPlugin : Plugin() {
                                 mapOf(
                                     "type" to "scene3d",
                                     "config" to mapOf(
+                                        "id" to "scene-editor",
                                         "content" to mapOf("command" to "demo.loaddocument", "params" to mapOf("id" to DOC_SCENE)),
                                         "save" to mapOf("command" to "demo.savedocument", "params" to mapOf("id" to DOC_SCENE, "title" to "Scene")),
                                         "height" to "70vh",
@@ -607,6 +807,7 @@ class DemoPlugin : Plugin() {
                                         "autoRotate" to false,
                                         "camera" to mapOf("fov" to 50, "position" to listOf(4, 3.5, 5), "target" to listOf(0, 0, 0)),
                                         "lights" to mapOf("ambient" to mapOf("intensity" to 0.7), "directional" to mapOf("intensity" to 1.2, "position" to listOf(5, 8, 6))),
+                                        "fog" to mapOf("color" to "#eef2f7", "near" to 10, "far" to 26),
                                         "toolbar" to listOf("addBox", "addSphere", "addCylinder", "delete", "resetCamera")
                                     )
                                 )
@@ -631,6 +832,7 @@ class DemoPlugin : Plugin() {
                                 mapOf(
                                     "type" to "canvas2d",
                                     "config" to mapOf(
+                                        "id" to "board-editor",
                                         "content" to mapOf("command" to "demo.loaddocument", "params" to mapOf("id" to DOC_BOARD)),
                                         "save" to mapOf("command" to "demo.savedocument", "params" to mapOf("id" to DOC_BOARD, "title" to "Whiteboard")),
                                         "height" to "70vh",
@@ -638,7 +840,7 @@ class DemoPlugin : Plugin() {
                                         "colors" to listOf("#111827", "#ef4444", "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6"),
                                         "widths" to listOf(2, 4, 8),
                                         "tool" to "draw",
-                                        "toolbar" to listOf("select", "pan", "draw", "erase", "rect", "ellipse", "line", "arrow", "front", "back", "clear")
+                                        "toolbar" to listOf("undo", "redo", "select", "pan", "draw", "erase", "rect", "ellipse", "line", "arrow", "front", "back", "clear")
                                     )
                                 )
                             )

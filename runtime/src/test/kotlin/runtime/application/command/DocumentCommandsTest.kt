@@ -21,6 +21,7 @@ import runtime.domain.models.RuntimeEvent
 import runtime.domain.plugin.PluginId
 import runtime.domain.repositories.CommandRegistry
 import runtime.infrastructure.inmem.InMemoryAuditLog
+import runtime.infrastructure.storage.DefaultEntityStore
 import runtime.infrastructure.inmem.InMemoryCommandRegistry
 import runtime.infrastructure.inmem.InMemoryEntityRegistry
 import runtime.infrastructure.obj.SynchronizedObjectList
@@ -40,7 +41,7 @@ class DocumentCommandsTest {
 
     private fun newProject(): runtime.domain.models.Project {
         val entityRegistry = InMemoryEntityRegistry().apply { register(DocumentDefinition) }
-        return ProjectFactory(entityRegistry) { SynchronizedObjectList<Any>(it) }.create(ProjectId.generate())
+        return ProjectFactory(entityRegistry, DefaultEntityStore()).create(ProjectId.generate())
     }
 
     private fun execute(project: runtime.domain.models.Project, commandId: String, params: Any?): CommandResult {

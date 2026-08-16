@@ -12,20 +12,26 @@ import runtime.domain.models.OverlayEntry
 import runtime.domain.models.OverlayTriggerEntry
 import runtime.domain.models.PageDefinition
 import runtime.domain.models.RegisteredUi
+import runtime.domain.models.RedirectRuleConfiguration
+import runtime.domain.models.RoutingConfiguration
 import runtime.domain.models.SectionDefinition
 import runtime.domain.models.ShortcutEntry
 import runtime.domain.models.SubscriptionEntry
 import runtime.domain.models.TransportConfig
 import runtime.domain.models.UiConfig
 import runtime.domain.models.WorkspaceConfiguration
+import runtime.domain.command.PipelineCommand
 import runtime.domain.plugin.PluginId
+import runtime.domain.plugin.UIDefinition
 import runtime.domain.repositories.CommandRegistry
 import runtime.domain.repositories.EntityRegistry
+import runtime.domain.models.RoutingConfig
 
 class WorkspaceConfigurationBuilder(
     private val uiConfig: UiConfig,
     private val wsPath: String = "/ws",
-    private val messageRegistry: MessageRegistry? = null
+    private val messageRegistry: MessageRegistry? = null,
+    private val routing: RoutingConfig = RoutingConfig("hash", emptyList())
 ) {
     fun build(
         uiDefinitions: List<RegisteredUi>,
@@ -33,29 +39,78 @@ class WorkspaceConfigurationBuilder(
         entityRegistry: EntityRegistry,
         loadedPluginIds: Set<PluginId>
     ): WorkspaceConfiguration {
-        val mainPluginId = uiConfig.mainPlugin?.let { PluginId(it) }
-        if (mainPluginId != null && mainPluginId !in loadedPluginIds) {
-            throw IllegalArgumentException("Main plugin '${mainPluginId.value}' is not loaded")
+        validatePluginOrder(loadedPluginIds)
+
+        val resolvedUi = uiDefinitions.map { reg ->
+            RegisteredUi(
+                pluginId = reg.pluginId,
+                definition = object : UIDefinition {
+                    override val componentType: String = reg.definition.componentType
+                    override val config: Map<String, Any> = resolveAssetUrls(reg.definition.config, reg.pluginId.value)
+                }
+            )
         }
 
-        val navigation = buildNavigation(uiDefinitions, mainPluginId)
-        val pages = buildPages(uiDefinitions)
-        val app = buildApp(uiDefinitions, mainPluginId, pages)
+        val navigation = buildNavigation(resolvedUi)
+        val pages = buildPages(resolvedUi)
+        val app = buildApp(resolvedUi, navigation, pages)
         return WorkspaceConfiguration(
             app = app,
             navigation = navigation,
             pages = pages,
-            shortcuts = buildShortcuts(uiDefinitions),
-            subscriptions = buildSubscriptions(uiDefinitions),
+            shortcuts = buildShortcuts(resolvedUi),
+            subscriptions = buildSubscriptions(resolvedUi),
             commands = commandRegistry.all().entries.sortedBy { it.key }.map { (id, command) ->
-                CommandEntry(id = id, description = command.description, group = command.group)
+                CommandEntry(
+                    id = id,
+                    description = command.description,
+                    group = command.group,
+                    type = command.type.name,
+                    visibility = command.visibility.name,
+                    steps = if (command is PipelineCommand) command.steps.map { it.command } else emptyList(),
+                    parameters = command.parameters.map { p ->
+                        CommandParameterEntry(
+                            name = p.name,
+                            type = p.type,
+                            required = p.required,
+                            description = p.description
+                        )
+                    }
+                )
             },
             entities = entityRegistry.list().sortedBy { it.value }.map { EntityEntry(type = it.value) },
-            overlays = buildOverlays(uiDefinitions),
-            overlayTriggers = buildOverlayTriggers(uiDefinitions),
+            overlays = buildOverlays(resolvedUi),
+            overlayTriggers = buildOverlayTriggers(resolvedUi),
             i18n = buildI18n(),
-            transport = TransportConfig(wsPath = wsPath)
+            transport = TransportConfig(wsPath = wsPath),
+            routing = RoutingConfiguration(
+                mode = routing.mode,
+                redirects = routing.redirects.map { RedirectRuleConfiguration(from = it.from, to = it.to) }
+            ),
+            protocol = ProtocolDocsConfiguration()
         )
+    }
+
+    private fun resolveAssetUrls(config: Map<String, Any>, pluginId: String): Map<String, Any> {
+        return config.mapValues { (_, value) -> resolveAssetValue(value, pluginId) ?: value }
+    }
+
+    private fun resolveAssetValue(value: Any?, pluginId: String): Any? {
+        return when (value) {
+            is String -> {
+                val trimmed = value.trim()
+                if (trimmed.startsWith("assets/") || trimmed.startsWith("icons/") ||
+                    trimmed.startsWith("images/") || trimmed.startsWith("static/")
+                ) {
+                    "/plugin-assets/$pluginId/$trimmed"
+                } else {
+                    value
+                }
+            }
+            is Map<*, *> -> value.entries.associate { (k, v) -> k.toString() to resolveAssetValue(v, pluginId) }
+            is List<*> -> value.map { resolveAssetValue(it, pluginId) }
+            else -> value
+        }
     }
 
     private fun buildI18n(): I18nConfiguration {
@@ -168,12 +223,28 @@ class WorkspaceConfigurationBuilder(
         }
     }
 
-    private fun buildNavigation(
-        uiDefinitions: List<RegisteredUi>,
-        mainPluginId: PluginId?
-    ): List<NavigationEntry> {
+    private fun pluginOrderIndex(pluginId: String): Int {
+        val index = uiConfig.pluginOrder.indexOf(pluginId)
+        return if (index >= 0) index else uiConfig.pluginOrder.size
+    }
+
+    private fun validatePluginOrder(loadedPluginIds: Set<PluginId>) {
+        val missing = uiConfig.pluginOrder.filter { PluginId(it) !in loadedPluginIds }
+        if (missing.isNotEmpty()) {
+            throw IllegalArgumentException("Plugins in ui.pluginOrder are not loaded: ${missing.joinToString()}")
+        }
+    }
+
+    private fun buildNavigation(uiDefinitions: List<RegisteredUi>): List<NavigationEntry> {
+        val include = uiConfig.navInclude
+        val exclude = uiConfig.navExclude
         val nav = uiDefinitions
             .filter { it.definition.componentType.equals(uiConfig.navigationComponentType, ignoreCase = true) }
+            .filter { reg ->
+                val pluginId = reg.pluginId.value
+                if (pluginId in exclude) false
+                else include.isEmpty() || pluginId in include
+            }
             .map { reg ->
                 val fields = uiConfig.navigationFields
                 NavigationEntry(
@@ -188,7 +259,7 @@ class WorkspaceConfigurationBuilder(
             }
         val indexed = nav.withIndex()
         val sorted = indexed.sortedWith(
-            compareBy<IndexedValue<NavigationEntry>> { it.value.pluginId != mainPluginId?.value }
+            compareBy<IndexedValue<NavigationEntry>> { pluginOrderIndex(it.value.pluginId ?: "") }
                 .thenBy { it.value.order ?: Int.MAX_VALUE }
                 .thenBy { it.index }
         )
@@ -235,13 +306,13 @@ class WorkspaceConfigurationBuilder(
 
     private fun buildApp(
         uiDefinitions: List<RegisteredUi>,
-        mainPluginId: PluginId?,
+        navigation: List<NavigationEntry>,
         pages: List<PageDefinition>
     ): AppConfiguration {
         val defaults = uiConfig.app
         val appDef = uiDefinitions
-            .filter { it.pluginId == mainPluginId }
             .filter { it.definition.componentType.equals(uiConfig.appComponentType, ignoreCase = true) }
+            .sortedBy { pluginOrderIndex(it.pluginId.value) }
             .map { it.definition.config }
             .firstOrNull()
 
@@ -250,7 +321,7 @@ class WorkspaceConfigurationBuilder(
         val layout = appDef?.get(fields.layout) as? String ?: defaults.layout
         val logo = appDef?.get(fields.logo) as? String ?: defaults.logo
         val landing = uiConfig.landingPage
-            ?: firstPageOf(uiDefinitions, mainPluginId)
+            ?: navigation.firstOrNull { it.pageId != null }?.pageId
             ?: pages.firstOrNull()?.id
 
         return AppConfiguration(
@@ -260,14 +331,6 @@ class WorkspaceConfigurationBuilder(
             landingPageId = landing,
             theme = uiConfig.theme
         )
-    }
-
-    private fun firstPageOf(uiDefinitions: List<RegisteredUi>, mainPluginId: PluginId?): String? {
-        return uiDefinitions
-            .filter { it.pluginId == mainPluginId }
-            .filter { it.definition.componentType.equals(uiConfig.pageComponentType, ignoreCase = true) }
-            .map { it.definition.config[uiConfig.pageFields.id] as String }
-            .firstOrNull()
     }
 
     companion object {

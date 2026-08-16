@@ -3,6 +3,11 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Graph, Node, Cell } from '@antv/x6'
 import { Selection } from '@antv/x6-plugin-selection'
 import { Snapline } from '@antv/x6-plugin-snapline'
+import { History } from '@antv/x6-plugin-history'
+import { Keyboard } from '@antv/x6-plugin-keyboard'
+import { Clipboard } from '@antv/x6-plugin-clipboard'
+import { Dnd } from '@antv/x6-plugin-dnd'
+import dagre from '@dagrejs/dagre'
 import '@antv/x6/dist/index.css'
 import { sessionStore } from '../store/session'
 import { i18nStore } from '../store/i18n'
@@ -18,6 +23,7 @@ import type {
   DiagramContent,
   DiagramEdgeSpec,
   DiagramNodeSpec,
+  DiagramStencilNodeSpec,
   DiagramToolbarButton
 } from '../protocol/componentSpec'
 
@@ -51,13 +57,18 @@ let edgeMode = false
 let edgeSource: Node | null = null
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let unsubEditorCommands: (() => void) | null = null
+let dnd: Dnd | null = null
+
+const canUndo = ref(false)
+const canRedo = ref(false)
 
 const BODY_DEFAULTS = { rx: 6, ry: 6, strokeWidth: 1.5 }
 const LABEL_DEFAULTS = { fontSize: 13, fontFamily: 'system-ui, sans-serif' }
 
-const toolbarButtons: DiagramToolbarButton[] = ['addRect', 'addEllipse', 'addEdge', 'delete', 'fit']
+const toolbarButtons: DiagramToolbarButton[] = ['addRect', 'addEllipse', 'addEdge', 'delete', 'fit', 'layout', 'undo', 'redo']
 
 const toolbar = computed(() => (cfg.value.toolbar === false ? [] : (cfg.value.toolbar ?? toolbarButtons)))
+const stencilNodes = computed(() => cfg.value.stencil?.nodes ?? [])
 
 function nodeSpec(n: Node): DiagramNodeSpec {
   const spec: DiagramNodeSpec = {
@@ -128,8 +139,8 @@ function buildNode(spec: DiagramNodeSpec): Record<string, unknown> {
     return {
       id: spec.id,
       shape: 'image',
-      x: spec.x,
-      y: spec.y,
+      x: spec.x ?? 0,
+      y: spec.y ?? 0,
       width,
       height,
       attrs: {
@@ -145,8 +156,8 @@ function buildNode(spec: DiagramNodeSpec): Record<string, unknown> {
   return {
     id: spec.id,
     shape: spec.shape === 'ellipse' ? 'ellipse' : 'rect',
-    x: spec.x,
-    y: spec.y,
+    x: spec.x ?? 0,
+    y: spec.y ?? 0,
     width,
     height,
     attrs: {
@@ -294,8 +305,9 @@ function fitView(): void {
 }
 
 function layoutGrid(): void {
-  if (!graph.value || !editable.value) return
-  const nodes = graph.value.getNodes()
+  const g = graph.value
+  if (!g) return
+  const nodes = g.getNodes()
   if (nodes.length === 0) return
   const sorted = [...nodes].sort((a, b) => {
     const pa = a.position()
@@ -312,7 +324,113 @@ function layoutGrid(): void {
     const row = Math.floor(i / cols)
     n.position(col * colWidth, row * rowHeight)
   })
+}
+
+function layoutDagre(): void {
+  const g = graph.value
+  if (!g) return
+  const nodes = g.getNodes()
+  if (nodes.length === 0) return
+  const dg = new dagre.graphlib.Graph()
+  dg.setDefaultEdgeLabel(() => ({}))
+  dg.setGraph({
+    rankdir: 'LR',
+    nodesep: cfg.value.layout?.gapX ?? 40,
+    ranksep: cfg.value.layout?.gapY ?? 40
+  })
+  nodes.forEach((n) => dg.setNode(n.id, { width: n.size().width, height: n.size().height }))
+  g.getEdges().forEach((e) => {
+    const source = e.getSourceCellId()
+    const target = e.getTargetCellId()
+    if (source && target) dg.setEdge(source, target)
+  })
+  dagre.layout(dg)
+  nodes.forEach((n) => {
+    const pos = dg.node(n.id)
+    if (pos) n.position(pos.x - n.size().width / 2, pos.y - n.size().height / 2)
+  })
+}
+
+function layoutCircle(): void {
+  const g = graph.value
+  if (!g) return
+  const nodes = g.getNodes()
+  if (nodes.length === 0) return
+  const count = nodes.length
+  const gap = cfg.value.layout?.gapX ?? 60
+  const maxW = Math.max(...nodes.map((n) => n.size().width))
+  const maxH = Math.max(...nodes.map((n) => n.size().height))
+  const radius = count <= 1 ? 0 : Math.max((maxW + maxH) / 2 + gap, (count * (maxW + gap)) / (2 * Math.PI))
+  const centerX = maxW / 2
+  const centerY = maxH / 2
+  const sorted = [...nodes].sort((a, b) => a.id.localeCompare(b.id))
+  sorted.forEach((n, i) => {
+    const angle = (2 * Math.PI * i) / count - Math.PI / 2
+    n.position(centerX + radius * Math.cos(angle) - n.size().width / 2, centerY + radius * Math.sin(angle) - n.size().height / 2)
+  })
+}
+
+function applyLayout(): void {
+  if (!graph.value || !editable.value) return
+  const type = cfg.value.layout?.type ?? 'grid'
+  if (type === 'dagre') layoutDagre()
+  else if (type === 'circle') layoutCircle()
+  else layoutGrid()
   scheduleSave()
+}
+
+function updateHistoryState(): void {
+  canUndo.value = graph.value?.canUndo() ?? false
+  canRedo.value = graph.value?.canRedo() ?? false
+}
+
+function undo(): void {
+  graph.value?.undo()
+  updateHistoryState()
+}
+
+function redo(): void {
+  graph.value?.redo()
+  updateHistoryState()
+}
+
+function copySelection(): void {
+  if (!graph.value || !editable.value) return
+  graph.value.copy(graph.value.getSelectedCells())
+}
+
+function pasteClipboard(): void {
+  if (!graph.value || !editable.value) return
+  graph.value.paste({ offset: 32 })
+  scheduleSave()
+}
+
+function cutSelection(): void {
+  if (!graph.value || !editable.value) return
+  graph.value.cut(graph.value.getSelectedCells())
+  scheduleSave()
+}
+
+function stencilCell(spec: DiagramStencilNodeSpec): Node {
+  const full: DiagramNodeSpec = {
+    id: `stencil_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6)}`,
+    shape: spec.shape ?? 'rect',
+    x: 0,
+    y: 0,
+    width: spec.width,
+    height: spec.height,
+    label: spec.label,
+    fill: spec.fill,
+    stroke: spec.stroke,
+    color: spec.color,
+    imageUrl: spec.imageUrl
+  }
+  return graph.value?.createNode(buildNode(full)) as Node
+}
+
+function onStencilMouseDown(spec: DiagramStencilNodeSpec, e: MouseEvent): void {
+  if (!editable.value || !graph.value || !dnd) return
+  dnd.start(stencilCell(spec), e)
 }
 
 function setupGraph(): void {
@@ -338,6 +456,45 @@ function setupGraph(): void {
 
   g.use(new Selection({ enabled: editable.value, multiple: true, rubberband: true }))
   g.use(new Snapline({ enabled: true }))
+
+  const historyEnabled = cfg.value.history !== false
+  if (historyEnabled) {
+    g.use(new History({ enabled: true }))
+    g.on('history:change', updateHistoryState)
+    updateHistoryState()
+  }
+
+  const keyboard = new Keyboard()
+  g.use(keyboard)
+  keyboard.bindKey(['meta+z', 'ctrl+z'], () => {
+    undo()
+    return false
+  })
+  keyboard.bindKey(['meta+shift+z', 'ctrl+shift+z', 'meta+y', 'ctrl+y'], () => {
+    redo()
+    return false
+  })
+  keyboard.bindKey(['backspace', 'delete'], () => {
+    deleteSelected()
+    return false
+  })
+  keyboard.bindKey(['meta+c', 'ctrl+c'], () => {
+    copySelection()
+    return false
+  })
+  keyboard.bindKey(['meta+v', 'ctrl+v'], () => {
+    pasteClipboard()
+    return false
+  })
+  keyboard.bindKey(['meta+x', 'ctrl+x'], () => {
+    cutSelection()
+    return false
+  })
+
+  const clipboard = new Clipboard()
+  g.use(clipboard)
+
+  dnd = new Dnd({ target: g, scaled: true })
 
   g.on('cell:click', () => {
     if (!edgeMode || !edgeSource) return
@@ -416,7 +573,7 @@ onBeforeUnmount(() => {
   graph.value = null
 })
 
-const toolbarMeta: Record<DiagramToolbarButton, { label: string; icon: string; action: () => void; active?: () => boolean }> = {
+const toolbarMeta: Record<DiagramToolbarButton, { label: string; icon: string; action: () => void; active?: () => boolean; disabled?: () => boolean }> = {
   addRect: { label: t('core.editor.diagram.addRect'), icon: '▭', action: () => addNode('rect') },
   addEllipse: { label: t('core.editor.diagram.addEllipse'), icon: '◯', action: () => addNode('ellipse') },
   addEdge: {
@@ -427,7 +584,9 @@ const toolbarMeta: Record<DiagramToolbarButton, { label: string; icon: string; a
   },
   delete: { label: t('core.editor.diagram.delete'), icon: '✕', action: () => deleteSelected() },
   fit: { label: t('core.editor.diagram.fit'), icon: '⛶', action: () => fitView() },
-  layout: { label: t('core.editor.diagram.layout'), icon: '▦', action: () => layoutGrid() }
+  layout: { label: t('core.editor.diagram.layout'), icon: '▦', action: () => applyLayout() },
+  undo: { label: t('core.editor.undo'), icon: '↩', action: () => undo(), disabled: () => !canUndo.value },
+  redo: { label: t('core.editor.redo'), icon: '↪', action: () => redo(), disabled: () => !canRedo.value }
 }
 </script>
 
@@ -438,14 +597,27 @@ const toolbarMeta: Record<DiagramToolbarButton, { label: string; icon: string; a
         v-for="name in toolbar"
         :key="name"
         class="ui-diagram__btn"
-        :class="{ 'ui-diagram__btn--active': toolbarMeta[name]?.active?.(), 'ui-diagram__btn--disabled': !editable }"
+        :class="{ 'ui-diagram__btn--active': toolbarMeta[name]?.active?.(), 'ui-diagram__btn--disabled': (!editable && name !== 'fit') || toolbarMeta[name]?.disabled?.() }"
         :title="toolbarMeta[name]?.label"
         @click="toolbarMeta[name]?.action()"
       >
         {{ toolbarMeta[name]?.icon }}
       </button>
     </div>
-    <div class="ui-diagram__canvas" :class="{ 'ui-diagram__canvas--readonly': !editable }" ref="hostEl"></div>
+    <div class="ui-diagram__body">
+      <aside v-if="stencilNodes.length" class="ui-diagram__stencil" aria-label="Stencil">
+        <div
+          v-for="(node, index) in stencilNodes"
+          :key="index"
+          class="ui-diagram__stencil-item"
+          :class="{ 'ui-diagram__stencil-item--disabled': !editable }"
+          @mousedown="onStencilMouseDown(node, $event)"
+        >
+          {{ node.label ?? 'Node' }}
+        </div>
+      </aside>
+      <div class="ui-diagram__canvas" :class="{ 'ui-diagram__canvas--readonly': !editable }" ref="hostEl"></div>
+    </div>
   </div>
 </template>
 
@@ -488,6 +660,38 @@ const toolbarMeta: Record<DiagramToolbarButton, { label: string; icon: string; a
 .ui-diagram__btn--disabled {
   opacity: 0.4;
   pointer-events: none;
+}
+.ui-diagram__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.ui-diagram__stencil {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 0.5rem;
+  border-right: 1px solid var(--rt-color-border);
+  background: var(--rt-color-bg);
+  overflow-y: auto;
+}
+.ui-diagram__stencil-item {
+  padding: 0.375rem 0.5rem;
+  border: 1px dashed var(--rt-color-border);
+  border-radius: var(--rt-radius-sm);
+  font-size: var(--rt-font-size-sm);
+  color: var(--rt-color-text);
+  cursor: grab;
+  user-select: none;
+  white-space: nowrap;
+}
+.ui-diagram__stencil-item:hover {
+  border-color: var(--rt-color-primary);
+  background: var(--rt-color-primary-soft, rgba(0, 0, 0, 0.06));
+}
+.ui-diagram__stencil-item--disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 .ui-diagram__canvas {
   flex: 1;

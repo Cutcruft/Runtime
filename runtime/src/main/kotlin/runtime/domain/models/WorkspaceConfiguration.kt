@@ -14,7 +14,20 @@ data class WorkspaceConfiguration(
     val overlays: List<OverlayEntry>,
     val overlayTriggers: List<OverlayTriggerEntry>,
     val i18n: I18nConfiguration,
-    val transport: TransportConfig
+    val transport: TransportConfig,
+    val routing: RoutingConfiguration,
+    val protocol: ProtocolDocsConfiguration = ProtocolDocsConfiguration()
+)
+
+/** Shell URL routing: `hash` (`#/page/<id>`) or `history` (`/page/<id>`), plus page redirects. */
+data class RoutingConfiguration(
+    val mode: String,
+    val redirects: List<RedirectRuleConfiguration>
+)
+
+data class RedirectRuleConfiguration(
+    val from: String,
+    val to: String
 )
 
 /** Locale + aggregated message catalogs (`locale -> key -> text`). */
@@ -83,7 +96,40 @@ data class SubscriptionEntry(
 data class CommandEntry(
     val id: String,
     val description: String,
-    val group: String? = null
+    val group: String? = null,
+    val type: String = "LOGICAL",
+    val visibility: String = "PUBLIC",
+    val steps: List<String> = emptyList(),
+    val parameters: List<CommandParameterEntry> = emptyList()
+)
+
+/** Declared metadata for one command parameter, surfaced in /docs. */
+data class CommandParameterEntry(
+    val name: String,
+    val type: String = "string",
+    val required: Boolean = false,
+    val description: String = ""
+)
+
+/** Live WebSocket protocol documentation: message types + direction, from the core enum. */
+data class ProtocolDocsConfiguration(
+    val messages: List<ProtocolMessageDoc> = defaultProtocolMessages()
+) {
+    companion object {
+        fun defaultProtocolMessages(): List<ProtocolMessageDoc> = listOf(
+            ProtocolMessageDoc("command.execute", "client", "Execute a command: payload {commandId, params}. Responses are matched by requestId."),
+            ProtocolMessageDoc("command.result", "server", "Command outcome: payload {status, value?, references?, error?}. status is SUCCESS or ERROR."),
+            ProtocolMessageDoc("project.event", "server", "Project-scoped event broadcast (payload carries the event fields)."),
+            ProtocolMessageDoc("object.changed", "server", "Entity mutation: payload {entityType, objectId, value}."),
+            ProtocolMessageDoc("error", "server", "Protocol/processing error: payload {message}.")
+        )
+    }
+}
+
+data class ProtocolMessageDoc(
+    val type: String,
+    val direction: String,
+    val description: String = ""
 )
 
 data class EntityEntry(

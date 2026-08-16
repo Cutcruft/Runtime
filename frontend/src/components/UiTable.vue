@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { sessionStore } from '../store/session'
 import { i18nStore } from '../store/i18n'
 import { useCfg } from '../renderer/useConfig'
+import { useContainerQuery } from '../renderer/useContainerQuery'
 import { useData } from '../renderer/useData'
 import { findAction, resolveParams, runAction } from '../renderer/bindingEngine'
 import { formatValue } from '../renderer/format'
@@ -18,6 +19,8 @@ import type {
 const props = defineProps<{ config: Record<string, unknown>; context?: BindingContext }>()
 
 const t = i18nStore.t
+const root = ref<HTMLElement | null>(null)
+const cq = useContainerQuery(root)
 
 const cfg = useCfg<TableConfig>(props.config, {
   showRefresh: true,
@@ -206,7 +209,7 @@ const showDeleteColumn = computed(() => legacyDelete.value || Boolean(findAction
 </script>
 
 <template>
-  <div class="ui-table" :class="cfg.className" :style="cfg.style" :title="cfg.tooltip">
+  <div ref="root" class="ui-table" :class="[cfg.className, `ui-table--cq-${cq}`]" :style="cfg.style" :title="cfg.tooltip">
     <div v-if="cfg.searchable || cfg.showRefresh || cfg.showRowCount" class="ui-table__toolbar">
       <input
         v-if="cfg.searchable"
@@ -427,5 +430,22 @@ const showDeleteColumn = computed(() => legacyDelete.value || Boolean(findAction
   color: var(--rt-color-text);
   font: inherit;
   font-size: var(--rt-font-size-sm);
+}
+.ui-table--cq-md .ui-table__grid th,
+.ui-table--cq-md .ui-table__grid td {
+  padding: 0.4rem var(--rt-space-sm);
+}
+.ui-table--cq-sm .ui-table__toolbar,
+.ui-table--cq-sm .ui-table__pagination {
+  flex-wrap: wrap;
+}
+.ui-table--cq-sm .ui-table__grid th,
+.ui-table--cq-sm .ui-table__grid td {
+  padding: 0.35rem var(--rt-space-sm);
+  font-size: var(--rt-font-size-sm);
+}
+.ui-table--cq-sm .ui-table__search {
+  max-width: none;
+  flex-basis: 100%;
 }
 </style>

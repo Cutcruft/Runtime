@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { sessionStore } from '../store/session'
 import { mountShortcut } from '../events/ShortcutService'
 import { findAction, resolveParams, runAction } from '../renderer/bindingEngine'
+import { iconView } from '../renderer/icon'
 import { useCfg } from '../renderer/useConfig'
 import type { BindingContext, ButtonConfig } from '../protocol/componentSpec'
 import type { ShortcutEntry } from '../protocol/types'
@@ -74,7 +75,8 @@ onUnmounted(() => {
     :style="cfg.style"
     @click="run"
   >
-    <span v-if="cfg.icon" class="ui-button__icon">{{ cfg.icon }}</span>
+    <img v-if="iconView(cfg.icon).src" class="ui-button__icon ui-button__icon--img" :src="iconView(cfg.icon).src" alt="" />
+    <span v-else-if="iconView(cfg.icon).glyph" class="ui-button__icon">{{ iconView(cfg.icon).glyph }}</span>
     <template v-if="busy">Working…</template>
     <template v-else>{{ cfg.label }}</template>
     <kbd v-if="cfg.shortcutKeys && cfg.shortcutKeys.length > 0" class="ui-button__shortcut">

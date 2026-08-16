@@ -2,8 +2,18 @@
 import { computed, ref, watch } from 'vue'
 import { configStore } from '../store/config'
 import { pageStore } from '../store/page'
+import { routerStore } from '../store/router'
 import { i18nStore } from '../store/i18n'
+import { iconView } from '../renderer/icon'
 import type { NavigationEntry } from '../protocol/types'
+
+defineProps<{
+  open?: boolean
+}>()
+
+const emit = defineEmits<{
+  close: []
+}>()
 
 const tr = i18nStore.tr
 const collapsedGroups = ref<Set<string>>(new Set())
@@ -18,15 +28,17 @@ const groups = computed(() => {
   return Array.from(byGroup.entries()).map(([title, items]) => ({ title, items }))
 })
 
+function navigate(pageId: string | undefined): void {
+  if (!pageId) return
+  routerStore.open(pageId)
+  emit('close')
+}
+
 function toggleGroup(title: string): void {
   const next = new Set(collapsedGroups.value)
   if (next.has(title)) next.delete(title)
   else next.add(title)
   collapsedGroups.value = next
-}
-
-function icon(item: NavigationEntry): string {
-  return item.icon ?? ''
 }
 
 watch(
@@ -41,7 +53,8 @@ watch(
 </script>
 
 <template>
-  <aside class="sidebar">
+  <div v-if="open" class="sidebar__scrim" @click="emit('close')" />
+  <aside class="sidebar" :class="{ 'sidebar--drawer': open }">
     <nav class="sidebar__nav">
       <template v-for="group in groups" :key="group.title">
         <div v-if="group.title" class="sidebar__group-heading" @click="toggleGroup(group.title)">
@@ -53,9 +66,10 @@ watch(
             <a
               class="sidebar__item"
               :class="{ 'sidebar__item--active': pageStore.activePageId === item.pageId }"
-              @click.prevent="item.pageId && pageStore.openPage(item.pageId)"
+              @click.prevent="navigate(item.pageId)"
             >
-              <span v-if="icon(item)" class="sidebar__icon">{{ icon(item) }}</span>
+              <img v-if="iconView(item.icon).src" class="sidebar__icon sidebar__icon--img" :src="iconView(item.icon).src" alt="" />
+              <span v-else-if="iconView(item.icon).glyph" class="sidebar__icon">{{ iconView(item.icon).glyph }}</span>
               <span class="sidebar__label">{{ tr(item.label) }}</span>
             </a>
           </li>
@@ -121,10 +135,41 @@ watch(
 }
 .sidebar__icon {
   width: 1.1rem;
+  height: 1.1rem;
   text-align: center;
   color: var(--rt-color-muted);
 }
+.sidebar__icon--img {
+  object-fit: contain;
+}
 .sidebar__item--active .sidebar__icon {
   color: var(--rt-color-primary);
+}
+.sidebar__scrim {
+  display: none;
+}
+
+@media (max-width: 48rem) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 40;
+    width: min(18rem, 85vw);
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    box-shadow: 0 0.5rem 2rem rgb(0 0 0 / 0.15);
+  }
+  .sidebar--drawer {
+    transform: translateX(0);
+  }
+  .sidebar__scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background: rgb(0 0 0 / 0.35);
+  }
 }
 </style>

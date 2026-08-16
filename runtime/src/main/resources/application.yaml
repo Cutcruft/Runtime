@@ -17,14 +17,55 @@ plugins:
 
 command:
   executorThreads: null
+  maxConcurrency: null
+  queueWaitMs: 5000
+  timeoutMs: null
+  wsConcurrency: 8
 
 audit:
   enabled: true
   maxEventsPerProject: 10000
 
+storage:
+  backend: memory
+  enabled: false
+  eviction: lru
+  memory:
+    maxEntities: -1
+  files:
+    directory: data
+  redis:
+    url: null
+  db:
+    url: null
+# Example: hybrid — hot LRU layer (memory, capped) + cold JSON files with
+# write-behind flush; `enabled: false` forces pure memory regardless of backend.
+# storage:
+#   backend: hybrid
+#   enabled: true
+#   eviction: lru
+#   memory:
+#     maxEntities: 5000
+#   files:
+#     directory: data
+
+routing:
+  mode: hash
+  redirects: []
+# Example: browser history mode (server falls back to index.html for /page/<id>)
+# and a page redirect from the old landing id to the current one.
+# routing:
+#   mode: history
+#   redirects:
+#     - from: home
+#       to: boards
+
 ui:
-  mainPlugin: null
+  pluginOrder: []
   landingPage: null
+  nav:
+    include: []
+    exclude: []
   navigationComponentType: Navigation
   pageComponentType: Page
   appComponentType: App
@@ -53,10 +94,51 @@ ui:
     layout: layout
   theme:
     mode: light
-    tokens: {}
+    tokens:
+      # Базовый стилистический слой ядра (нижний уровень под UI плагинов).
+      # Ключи с суффиксом .light/.dark применяются только к соответствующей теме;
+      # без суффикса — к обеим. Плагины могут переопределять через свои токены.
+      color-bg.light: "#f5f6f8"
+      color-bg.dark: "#16181d"
+      color-surface.light: "#ffffff"
+      color-surface.dark: "#1f2329"
+      color-text.light: "#1c1c1c"
+      color-text.dark: "#e8e8e8"
+      color-muted.light: "#666666"
+      color-muted.dark: "#9aa0a6"
+      color-border.light: "#e2e2e2"
+      color-border.dark: "#343a42"
+      color-primary.light: "#0066cc"
+      color-primary.dark: "#4d9fff"
+      color-primary-hover.light: "#0052a3"
+      color-primary-hover.dark: "#6fb1ff"
+      color-danger.light: "#b00020"
+      color-danger.dark: "#ff6b6b"
+      color-success.light: "#1b7f3b"
+      color-success.dark: "#4cd07d"
+      color-warning.light: "#b26a00"
+      color-warning.dark: "#ffc24d"
+      color-info.light: "#0066cc"
+      color-info.dark: "#4d9fff"
+      shadow.light: "0 2px 8px rgba(0, 0, 0, 0.12)"
+      shadow.dark: "0 2px 8px rgba(0, 0, 0, 0.4)"
+      radius-sm: "6px"
+      radius: "8px"
+      radius-lg: "12px"
+      space-xs: "0.25rem"
+      space-sm: "0.5rem"
+      space: "0.75rem"
+      space-lg: "1.25rem"
+      font-size-sm: "0.75rem"
+      font-size: "0.875rem"
+      font-size-lg: "1rem"
+      font-size-xl: "1.25rem"
 
 i18n:
   defaultLocale: en
+  locales:
+    - en
+    - ru
 
 messages:
   missingCommandId: "Missing commandId"
@@ -67,7 +149,10 @@ messages:
   invalidProjectId: "Invalid projectId: {projectId}"
   projectNotFound: "Project not found: {projectId}"
   commandNotFound: "Command not found: {commandId}"
+  commandPrivate: "Command {commandId} is private and cannot be invoked from the client"
   commandExecutionFailed: "Command execution failed: {message}"
+  commandTimeout: "Command {commandId} timed out after {timeoutMs} ms"
+  commandBusy: "Command {commandId} rejected: executor is busy"
   missingData: "Missing data"
   missingParameters: "Missing parameters"
   unknownEntityType: "Unknown entity type: {entityType}"

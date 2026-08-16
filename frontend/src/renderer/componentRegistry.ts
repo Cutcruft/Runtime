@@ -16,6 +16,10 @@ import UiInput from '../components/UiInput.vue'
 import UiSelect from '../components/UiSelect.vue'
 import UiTextarea from '../components/UiTextarea.vue'
 import UiCheckbox from '../components/UiCheckbox.vue'
+import UiAvatar from '../components/UiAvatar.vue'
+import UiProgress from '../components/UiProgress.vue'
+import UiAccordion from '../components/UiAccordion.vue'
+import UiFrame from '../components/UiFrame.vue'
 
 const registry = new Map<string, Component>()
 
@@ -55,4 +59,8 @@ export function registerBuiltinComponents(): void {
   register('select', UiSelect)
   register('textarea', UiTextarea)
   register('checkbox', UiCheckbox)
+  register('avatar', UiAvatar)
+  register('progress', UiProgress)
+  register('accordion', UiAccordion)
+  register('frame', UiFrame)
 }

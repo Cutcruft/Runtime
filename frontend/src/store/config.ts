@@ -46,6 +46,9 @@ export const configStore = {
   get i18n() {
     return config.value?.i18n ?? null
   },
+  get routing() {
+    return config.value?.routing ?? { mode: 'hash' as const, redirects: [] }
+  },
   async load(): Promise<void> {
     const response = await fetch('/config')
     if (!response.ok) {

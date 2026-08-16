@@ -3,6 +3,7 @@ package runtime.application.workspace
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import org.junit.jupiter.api.Test
 import runtime.domain.command.Command
 import runtime.domain.command.CommandContext
@@ -12,12 +13,15 @@ import runtime.domain.entity.EntityType
 import runtime.domain.models.AppConfig
 import runtime.domain.models.AppFields
 import runtime.domain.models.AppConfiguration
+import runtime.domain.models.CommandEntry
 import runtime.domain.models.ComponentDefinition
 import runtime.domain.models.NavigationEntry
 import runtime.domain.models.NavigationFields
 import runtime.domain.models.PageDefinition
 import runtime.domain.models.PageFields
+import runtime.domain.models.RedirectRule
 import runtime.domain.models.RegisteredUi
+import runtime.domain.models.RoutingConfig
 import runtime.domain.models.SectionDefinition
 import runtime.domain.models.ThemeConfig
 import runtime.domain.models.UiConfig
@@ -29,8 +33,10 @@ import runtime.infrastructure.inmem.InMemoryEntityRegistry
 class WorkspaceConfigurationBuilderTest {
 
     private val uiConfig = UiConfig(
-        mainPlugin = null,
+        pluginOrder = emptyList(),
         landingPage = null,
+        navInclude = emptyList(),
+        navExclude = emptyList(),
         navigationComponentType = "Navigation",
         pageComponentType = "Page",
         appComponentType = "App",
@@ -58,7 +64,7 @@ class WorkspaceConfigurationBuilderTest {
         val navigation = ui(
             "demo",
             "Navigation",
-            mapOf("id" to "nav", "label" to "Main", "pageId" to "boards", "order" to 1)
+            mapOf("id" to "nav", "label" to "Main", "pageId" to "boards", "order" to 1, "icon" to "assets/logo.svg")
         )
         val page = ui(
             "demo",
@@ -72,7 +78,14 @@ class WorkspaceConfigurationBuilderTest {
                         "layout" to "stack",
                         "columns" to 1,
                         "components" to listOf(
-                            mapOf("type" to "Table", "config" to mapOf("entityType" to "demo.board"))
+                            mapOf(
+                                "type" to "Table",
+                                "config" to mapOf(
+                                    "entityType" to "demo.board",
+                                    "icon" to "icons/table.svg",
+                                    "nested" to mapOf("image" to "images/pic.png", "keep" to "assets-not-prefixed")
+                                )
+                            )
                         )
                     )
                 )
@@ -83,8 +96,8 @@ class WorkspaceConfigurationBuilderTest {
         val commandRegistry = InMemoryCommandRegistry()
         commandRegistry.register(
             PluginId("demo"),
-            object : Command("create", "Create something") {
-                override suspend fun execute(context: CommandContext, params: Any?): CommandResult =
+            object : Command("create", "Create something", "Tasks") {
+                override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult =
                     CommandResult.success()
             }
         )
@@ -103,7 +116,9 @@ class WorkspaceConfigurationBuilderTest {
         )
 
         assertEquals(
-            listOf(NavigationEntry("nav", "Main", "boards", 1, "demo")),
+            listOf(
+                NavigationEntry("nav", "Main", "boards", 1, "demo", icon = "/plugin-assets/demo/assets/logo.svg")
+            ),
             config.navigation
         )
         assertEquals(
@@ -116,14 +131,26 @@ class WorkspaceConfigurationBuilderTest {
                             id = "boards-list",
                             layout = "stack",
                             columns = 1,
-                            components = listOf(ComponentDefinition("Table", mapOf("entityType" to "demo.board")))
+                            components = listOf(
+                                ComponentDefinition(
+                                    "Table",
+                                    mapOf(
+                                        "entityType" to "demo.board",
+                                        "icon" to "/plugin-assets/demo/icons/table.svg",
+                                        "nested" to mapOf("image" to "/plugin-assets/demo/images/pic.png", "keep" to "assets-not-prefixed")
+                                    )
+                                )
+                            )
                         )
                     )
                 )
             ),
             config.pages
         )
-        assertEquals(listOf("demo.create"), config.commands.map { it.id })
+        assertEquals(
+            listOf(CommandEntry(id = "demo.create", description = "Create something", group = "Tasks")),
+            config.commands
+        )
         assertEquals(listOf("demo.task"), config.entities.map { it.type })
         assertEquals(AppConfiguration("Runtime", null, "topbar", "boards", uiConfig.theme), config.app)
     }
@@ -225,9 +252,9 @@ class WorkspaceConfigurationBuilderTest {
     }
 
     @Test
-    fun `app shell is read from main plugin app definition`() {
+    fun `app shell is read from first app definition by plugin order`() {
         val builder = WorkspaceConfigurationBuilder(
-            uiConfig.copy(mainPlugin = "demo")
+            uiConfig.copy(pluginOrder = listOf("demo"))
         )
 
         val app = ui(
@@ -250,15 +277,15 @@ class WorkspaceConfigurationBuilderTest {
         )
 
         assertEquals(
-            AppConfiguration("Board App", "logo.png", "sidebar", "boards", uiConfig.theme),
+            AppConfiguration("Board App", "logo.png", "sidebar", "other", uiConfig.theme),
             config.app
         )
         assertEquals(listOf("other"), config.navigation.map { it.pluginId })
     }
 
     @Test
-    fun `build fails when main plugin is not loaded`() {
-        val builder = WorkspaceConfigurationBuilder(uiConfig.copy(mainPlugin = "missing"))
+    fun `build fails when a plugin in plugin order is not loaded`() {
+        val builder = WorkspaceConfigurationBuilder(uiConfig.copy(pluginOrder = listOf("missing")))
 
         assertFailsWith<IllegalArgumentException> {
             builder.build(
@@ -271,7 +298,27 @@ class WorkspaceConfigurationBuilderTest {
     }
 
     @Test
-    fun `landing page falls back to first main plugin page then first page`() {
+    fun `navigation follows plugin order then order field`() {
+        val builder = WorkspaceConfigurationBuilder(
+            uiConfig.copy(pluginOrder = listOf("second", "first"))
+        )
+
+        val a = ui("first", "Navigation", mapOf("id" to "a", "label" to "A", "pageId" to "p1", "order" to 1))
+        val b = ui("second", "Navigation", mapOf("id" to "b", "label" to "B", "pageId" to "p2", "order" to 0))
+        val c = ui("third", "Navigation", mapOf("id" to "c", "label" to "C", "pageId" to "p3", "order" to 5))
+
+        val config = builder.build(
+            listOf(a, b, c),
+            InMemoryCommandRegistry(),
+            InMemoryEntityRegistry(),
+            loadedPluginIds = setOf(PluginId("first"), PluginId("second"), PluginId("third"))
+        )
+
+        assertEquals(listOf("b", "a", "c"), config.navigation.map { it.id })
+    }
+
+    @Test
+    fun `landing page falls back to first navigation page then first page`() {
         val builder = WorkspaceConfigurationBuilder(uiConfig)
 
         val config = builder.build(
@@ -289,5 +336,68 @@ class WorkspaceConfigurationBuilderTest {
             loadedPluginIds = emptySet()
         )
         assertNull(empty.app.landingPageId)
+    }
+
+    @Test
+    fun `nav include keeps only listed plugins`() {
+        val builder = WorkspaceConfigurationBuilder(uiConfig.copy(navInclude = listOf("demo")))
+
+        val config = builder.build(
+            listOf(
+                ui("demo", "Navigation", mapOf("id" to "n1", "label" to "D", "pageId" to "p1", "order" to 1)),
+                ui("other", "Navigation", mapOf("id" to "n2", "label" to "O", "pageId" to "p2", "order" to 0))
+            ),
+            InMemoryCommandRegistry(),
+            InMemoryEntityRegistry(),
+            loadedPluginIds = setOf(PluginId("demo"), PluginId("other"))
+        )
+
+        assertEquals(listOf("n1"), config.navigation.map { it.id })
+    }
+
+    @Test
+    fun `nav exclude removes listed plugins and empty include keeps all`() {
+        val builder = WorkspaceConfigurationBuilder(uiConfig.copy(navExclude = listOf("other")))
+
+        val config = builder.build(
+            listOf(
+                ui("demo", "Navigation", mapOf("id" to "n1", "label" to "D", "pageId" to "p1", "order" to 1)),
+                ui("other", "Navigation", mapOf("id" to "n2", "label" to "O", "pageId" to "p2", "order" to 0))
+            ),
+            InMemoryCommandRegistry(),
+            InMemoryEntityRegistry(),
+            loadedPluginIds = setOf(PluginId("demo"), PluginId("other"))
+        )
+
+        assertEquals(listOf("n1"), config.navigation.map { it.id })
+    }
+
+    @Test
+    fun `routing mode and redirects are exposed in the workspace configuration`() {
+        val routing = RoutingConfig(
+            mode = "history",
+            redirects = listOf(RedirectRule(from = "home", to = "boards"))
+        )
+        val builder = WorkspaceConfigurationBuilder(uiConfig, routing = routing)
+        val config = builder.build(
+            emptyList(),
+            InMemoryCommandRegistry(),
+            InMemoryEntityRegistry(),
+            loadedPluginIds = emptySet()
+        )
+        assertEquals("history", config.routing.mode)
+        assertEquals(listOf("home" to "boards"), config.routing.redirects.map { it.from to it.to })
+    }
+
+    @Test
+    fun `routing defaults to hash with no redirects`() {
+        val config = WorkspaceConfigurationBuilder(uiConfig).build(
+            emptyList(),
+            InMemoryCommandRegistry(),
+            InMemoryEntityRegistry(),
+            loadedPluginIds = emptySet()
+        )
+        assertEquals("hash", config.routing.mode)
+        assertTrue(config.routing.redirects.isEmpty())
     }
 }

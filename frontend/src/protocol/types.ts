@@ -68,6 +68,8 @@ export interface CommandEntry {
   id: string
   description: string
   group?: string
+  type?: string
+  visibility?: string
 }
 
 export interface EntityEntry {
@@ -113,6 +115,18 @@ export interface TransportConfig {
   wsPath: string
 }
 
+export type RoutingMode = 'hash' | 'history'
+
+export interface RedirectRule {
+  from: string
+  to: string
+}
+
+export interface RoutingConfig {
+  mode: RoutingMode
+  redirects: RedirectRule[]
+}
+
 export interface I18nConfiguration {
   defaultLocale: string
   locales: string[]
@@ -131,6 +145,7 @@ export interface WorkspaceConfig {
   overlayTriggers: OverlayTriggerEntry[]
   i18n: I18nConfiguration
   transport: TransportConfig
+  routing: RoutingConfig
 }
 
 export interface TableColumnsConfig {

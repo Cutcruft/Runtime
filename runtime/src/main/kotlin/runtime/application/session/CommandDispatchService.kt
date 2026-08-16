@@ -67,6 +67,12 @@ class CommandDispatchService(
             is Outcome.ExecuteCommand -> {
                 val project = session.project
                     ?: return DispatchResult.Protocol(messages[Messages.SESSION_NOT_BOUND])
+                val command = commandExecutor.findCommand(outcome.commandId)
+                if (command != null && command.visibility != runtime.domain.command.CommandVisibility.PUBLIC) {
+                    return DispatchResult.Protocol(
+                        messages.format(Messages.COMMAND_PRIVATE, "commandId" to outcome.commandId)
+                    )
+                }
                 val result = commandExecutor.execute(project, outcome.commandId, outcome.params, sessionId)
                 sessionManager.rebindIfChanged(sessionId)
                 DispatchResult.Result(result)

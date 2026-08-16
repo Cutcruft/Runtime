@@ -202,7 +202,7 @@ export interface RichTextConfig extends EditorBaseConfig {
 // Diagram (AntV X6)
 // ---------------------------------------------------------------
 
-export type DiagramToolbarButton = 'addRect' | 'addEllipse' | 'addEdge' | 'delete' | 'fit' | 'layout'
+export type DiagramToolbarButton = 'addRect' | 'addEllipse' | 'addEdge' | 'delete' | 'fit' | 'layout' | 'undo' | 'redo'
 
 export interface DiagramNodeSpec {
   id: string
@@ -235,6 +235,22 @@ export interface DiagramContent {
   edges: DiagramEdgeSpec[]
 }
 
+/** Node template used by the stencil palette (all shapes supported, no position required) */
+export interface DiagramStencilNodeSpec {
+  shape?: 'rect' | 'ellipse' | 'image'
+  label?: string
+  fill?: string
+  stroke?: string
+  /** Shown as the label text color for non-image nodes */
+  color?: string
+  /** Source URL for image nodes */
+  imageUrl?: string
+  width?: number
+  height?: number
+}
+
+export type DiagramLayoutType = 'grid' | 'dagre' | 'circle'
+
 export interface DiagramConfig extends EditorBaseConfig {
   /** Toolbar buttons (default: all); `false` hides the toolbar entirely */
   toolbar?: DiagramToolbarButton[] | false
@@ -246,8 +262,12 @@ export interface DiagramConfig extends EditorBaseConfig {
   mousewheel?: boolean
   /** Snap shapes to grid (default true) */
   snap?: boolean
-  /** Gaps used by the grid layout button */
-  layout?: { gapX?: number; gapY?: number }
+  /** Undo/redo history + clipboard keyboard shortcuts (default true) */
+  history?: boolean
+  /** Layout algorithm + gaps used by the layout toolbar button */
+  layout?: { type?: DiagramLayoutType; gapX?: number; gapY?: number }
+  /** Stencil palette (draggable node templates shown on the left) */
+  stencil?: { nodes: DiagramStencilNodeSpec[] }
 }
 
 // ---------------------------------------------------------------
@@ -266,6 +286,8 @@ export interface Scene3DObjectSpec {
   color?: string
   /** URL of a glTF/GLB model for kind 'model' (relative URLs resolve against the app origin) */
   modelUrl?: string
+  /** Nested objects attached to this object (positions are relative to the parent) */
+  children?: Scene3DObjectSpec[]
 }
 
 export interface Scene3DContent {
@@ -288,6 +310,15 @@ export interface Scene3DLightConfig {
   directional?: { intensity?: number; position?: [number, number, number] }
 }
 
+export interface Scene3DFogConfig {
+  /** Fog color (default background) */
+  color?: string
+  /** Distance from the camera where fog starts (default 8) */
+  near?: number
+  /** Distance where objects are fully fogged out (default 25) */
+  far?: number
+}
+
 export interface Scene3DConfig extends EditorBaseConfig {
   /** Toolbar buttons (default: all); `false` hides the toolbar entirely */
   toolbar?: Scene3DToolbarButton[] | false
@@ -301,6 +332,8 @@ export interface Scene3DConfig extends EditorBaseConfig {
   camera?: Scene3DCameraConfig
   /** Scene lights (default ambient 0.7 + directional 1.2) */
   lights?: Scene3DLightConfig
+  /** Distance fog (off by default) */
+  fog?: Scene3DFogConfig
 }
 
 // ---------------------------------------------------------------
@@ -308,7 +341,7 @@ export interface Scene3DConfig extends EditorBaseConfig {
 // ---------------------------------------------------------------
 
 export type Canvas2DTool = 'select' | 'pan' | 'draw' | 'erase' | 'rect' | 'ellipse' | 'line' | 'arrow'
-export type Canvas2DToolbarButton = Canvas2DTool | 'clear' | 'front' | 'back'
+export type Canvas2DToolbarButton = Canvas2DTool | 'clear' | 'front' | 'back' | 'undo' | 'redo'
 
 export interface Canvas2DPoint {
   x: number
@@ -316,6 +349,8 @@ export interface Canvas2DPoint {
 }
 
 export interface Canvas2DElement {
+  /** Stable id (assigned on creation, kept through saves) */
+  id?: string
   type: 'path' | 'rect' | 'ellipse' | 'line' | 'arrow'
   points: Canvas2DPoint[]
   color: string
@@ -418,6 +453,15 @@ export interface TabsItemConfig {
   disabled?: boolean
 }
 
+export interface FrameConfig extends BaseComponentConfig {
+  /** URL, relative path, `page:<id>` (embed) or `asset:<pluginId>/<path>` (plugin asset). */
+  src: string
+  width?: string
+  height?: string
+  title?: string
+  sandbox?: string
+}
+
 export interface TabsConfig extends BaseComponentConfig {
   tabs?: TabsItemConfig[]
   activeTab?: string
@@ -426,6 +470,39 @@ export interface TabsConfig extends BaseComponentConfig {
 export interface GridConfig extends BaseComponentConfig {
   columns?: number
   gap?: string
+}
+
+export interface AvatarConfig extends BaseComponentConfig {
+  /** Name used to derive initials when src/fallback are missing */
+  name?: string
+  /** Direct image URL (relative asset paths resolve against the app origin) */
+  src?: string
+  /** Explicit initials, overrides derived ones */
+  fallback?: string
+  size?: 'small' | 'medium' | 'large'
+  tone?: BadgeTone
+}
+
+export interface ProgressConfig extends BaseComponentConfig {
+  /** Current value (0..100). For data bindings, use `data` + `valueKey`. */
+  value?: number
+  valueKey?: string
+  tone?: 'default' | 'green' | 'red' | 'blue' | 'amber'
+  showLabel?: boolean
+  /** Label override for the right-aligned text */
+  label?: string
+}
+
+export interface AccordionItemConfig {
+  id: string
+  label: string
+  components?: ComponentDefinition[]
+  open?: boolean
+  disabled?: boolean
+}
+
+export interface AccordionConfig extends BaseComponentConfig {
+  items?: AccordionItemConfig[]
 }
 
 export interface StatConfig extends BaseComponentConfig {
@@ -449,6 +526,8 @@ export interface ListConfig extends BaseComponentConfig {
   /** Optional nested component rendered per row (context provides `row`) */
   itemTemplate?: ComponentDefinition
   itemKey?: string
+  /** Drag-to-reorder rows. Fires the `reorder` action with { from, to, row } payload */
+  sortable?: boolean
 }
 
 export type ColumnRender = 'text' | 'badge' | 'boolean'

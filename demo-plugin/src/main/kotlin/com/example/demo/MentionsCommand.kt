@@ -6,7 +6,7 @@ import runtime.domain.command.CommandResult
 
 /** Returns @-mention candidates for the RichText editor. */
 class MentionsCommand : Command("mentions", "List mention candidates", "Workspace") {
-    override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
+    override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult {
         val people = listOf(
             mapOf("id" to "alice", "label" to "Alice"),
             mapOf("id" to "bob", "label" to "Bob"),

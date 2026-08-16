@@ -6,6 +6,8 @@ import { toasts } from '../store/toasts'
 import { useCfg } from '../renderer/useConfig'
 import { useData } from '../renderer/useData'
 import { resolveParams } from '../renderer/bindingEngine'
+import { overlayService } from '../overlay/overlayService'
+import { subscribeEvent } from '../events/eventBus'
 import type {
   BindingContext,
   Canvas2DConfig,
@@ -33,6 +35,7 @@ const hostEl = ref<HTMLElement | null>(null)
 
 const editable = computed(() => !cfg.value.readonly && cfg.value.disabled !== true)
 const height = computed(() => cfg.value.height)
+const componentId = computed(() => cfg.value.id)
 
 const data = computed(() => cfg.value.content)
 const { value, error } = useData(
@@ -66,6 +69,19 @@ let loaded = false
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let ctx: CanvasRenderingContext2D | null = null
 let resizeObserver: ResizeObserver | null = null
+let idCounter = 0
+let unsubEditorCommands: (() => void) | null = null
+
+const MAX_HISTORY = 50
+let undoStack: Canvas2DElement[][] = []
+let redoStack: Canvas2DElement[][] = []
+const canUndo = ref(false)
+const canRedo = ref(false)
+
+function nextId(): string {
+  idCounter += 1
+  return `el_${Date.now().toString(36)}_${idCounter}`
+}
 
 const toolbarButtons: Canvas2DToolbarButton[] = ['select', 'pan', 'draw', 'erase', 'rect', 'ellipse', 'line', 'arrow', 'clear']
 const toolbar = computed(() => (cfg.value.toolbar === false ? [] : (cfg.value.toolbar ?? toolbarButtons)))
@@ -97,8 +113,51 @@ async function save(): Promise<void> {
 }
 
 function loadContent(content: Canvas2DContent): void {
-  elements.value = content.elements ?? []
+  elements.value = (content.elements ?? []).map((el) => (el.id ? el : { ...el, id: nextId() }))
   selectedIndex = -1
+  undoStack = []
+  redoStack = []
+  updateHistoryState()
+  redraw()
+}
+
+function cloneElements(): Canvas2DElement[] {
+  return elements.value.map((el) => ({ ...el, points: el.points.map((p) => ({ ...p })) }))
+}
+
+function updateHistoryState(): void {
+  canUndo.value = undoStack.length > 0
+  canRedo.value = redoStack.length > 0
+}
+
+function pushUndo(prevPoints?: Canvas2DPoint[]): void {
+  const copy = cloneElements()
+  if (prevPoints && selectedIndex >= 0 && copy[selectedIndex]) {
+    copy[selectedIndex] = { ...copy[selectedIndex], points: prevPoints.map((p) => ({ x: p.x, y: p.y })) }
+  }
+  undoStack.push(copy)
+  if (undoStack.length > MAX_HISTORY) undoStack.shift()
+  redoStack.length = 0
+  updateHistoryState()
+}
+
+function undo(): void {
+  if (!editable.value || undoStack.length === 0) return
+  redoStack.push(cloneElements())
+  elements.value = undoStack.pop() ?? []
+  selectedIndex = -1
+  updateHistoryState()
+  scheduleSave()
+  redraw()
+}
+
+function redo(): void {
+  if (!editable.value || redoStack.length === 0) return
+  undoStack.push(cloneElements())
+  elements.value = redoStack.pop() ?? []
+  selectedIndex = -1
+  updateHistoryState()
+  scheduleSave()
   redraw()
 }
 
@@ -360,6 +419,8 @@ function commitElement(): void {
   if (inProgress.value) {
     const el = inProgress.value
     if (el.points.length >= 2) {
+      pushUndo()
+      el.id = nextId()
       elements.value.push(el)
       selectedIndex = -1
       scheduleSave()
@@ -494,14 +555,22 @@ function onPointerUp(): void {
     resizing = false
     resizeHandle = null
     resizeBox = null
-    dragSnapshot = []
+    if (dragSnapshot.length > 0) {
+      const cur = selectedIndex >= 0 ? elements.value[selectedIndex] : undefined
+      const changed = !cur || cur.points.length !== dragSnapshot.length || cur.points.some((p, i) => p.x !== dragSnapshot[i].x || p.y !== dragSnapshot[i].y)
+      if (changed) pushUndo(dragSnapshot)
+      dragSnapshot = []
+    }
     scheduleSave()
     dragMoved = false
   }
   if (panning) panning = false
   if (dragging) {
     dragging = false
-    if (dragMoved) scheduleSave()
+    if (dragMoved) {
+      pushUndo(dragSnapshot)
+      scheduleSave()
+    }
     dragMoved = false
     dragSnapshot = []
   }
@@ -524,6 +593,17 @@ function onWheel(e: WheelEvent): void {
 
 function onKeyDown(e: KeyboardEvent): void {
   if (!editable.value) return
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault()
+    if (e.shiftKey) redo()
+    else undo()
+    return
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') {
+    e.preventDefault()
+    redo()
+    return
+  }
   if ((e.metaKey || e.ctrlKey) && e.key === ']') {
     e.preventDefault()
     bringFront()
@@ -536,6 +616,7 @@ function onKeyDown(e: KeyboardEvent): void {
   }
   if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIndex >= 0) {
     e.preventDefault()
+    pushUndo()
     elements.value.splice(selectedIndex, 1)
     selectedIndex = -1
     scheduleSave()
@@ -557,6 +638,8 @@ function setWidth(width: number): void {
 
 function clearBoard(): void {
   if (!editable.value) return
+  if (elements.value.length === 0) return
+  pushUndo()
   elements.value = []
   selectedIndex = -1
   inProgress.value = null
@@ -566,6 +649,7 @@ function clearBoard(): void {
 
 function bringFront(): void {
   if (selectedIndex < 0 || selectedIndex >= elements.value.length) return
+  pushUndo()
   const el = elements.value.splice(selectedIndex, 1)[0]
   elements.value.push(el)
   selectedIndex = elements.value.length - 1
@@ -575,6 +659,7 @@ function bringFront(): void {
 
 function sendBack(): void {
   if (selectedIndex < 0 || selectedIndex >= elements.value.length) return
+  pushUndo()
   const el = elements.value.splice(selectedIndex, 1)[0]
   elements.value.unshift(el)
   selectedIndex = 0
@@ -589,6 +674,90 @@ function resetView(): void {
   redraw()
 }
 
+function duplicateElement(): void {
+  if (selectedIndex < 0 || selectedIndex >= elements.value.length) return
+  pushUndo()
+  const el = elements.value[selectedIndex]
+  const copy: Canvas2DElement = {
+    id: nextId(),
+    type: el.type,
+    points: el.points.map((pt) => ({ x: pt.x + 16, y: pt.y + 16 })),
+    color: el.color,
+    width: el.width
+  }
+  elements.value.push(copy)
+  selectedIndex = elements.value.length - 1
+  scheduleSave()
+  redraw()
+}
+
+function onContextMenu(e: MouseEvent): void {
+  if (!editable.value) return
+  const rect = canvasRef.value?.getBoundingClientRect() ?? { left: 0, top: 0 }
+  const p = {
+    x: (e.clientX - rect.left - view.x) / view.scale,
+    y: (e.clientY - rect.top - view.y) / view.scale
+  }
+  const idx = hitTest(p)
+  if (idx < 0) return
+  selectedIndex = idx
+  redraw()
+  const el = elements.value[idx]
+  const opened = overlayService.onGesture({
+    event: 'contextmenu',
+    componentType: 'Canvas2D',
+    objectType: 'canvas.element',
+    componentId: componentId.value,
+    row: { id: el.id, type: el.type },
+    x: e.clientX,
+    y: e.clientY
+  })
+  if (opened) e.preventDefault()
+}
+
+interface EditorCommandPayload {
+  editor?: string
+  command?: string
+  componentId?: string
+  params?: Record<string, unknown>
+}
+
+function handleEditorCommand(payload: EditorCommandPayload): void {
+  if (payload.editor !== 'canvas') return
+  if (payload.componentId && payload.componentId !== componentId.value) return
+  if (!editable.value) return
+  if (payload.command === 'undo') {
+    undo()
+    return
+  }
+  if (payload.command === 'redo') {
+    redo()
+    return
+  }
+  const id = payload.params?.id as string | undefined
+  const idx = id ? elements.value.findIndex((el) => el.id === id) : -1
+  if (idx < 0) return
+  selectedIndex = idx
+  switch (payload.command) {
+    case 'delete':
+      pushUndo()
+      elements.value.splice(idx, 1)
+      selectedIndex = -1
+      scheduleSave()
+      redraw()
+      break
+    case 'duplicate':
+      duplicateElement()
+      break
+    case 'front':
+      bringFront()
+      break
+    case 'back':
+      sendBack()
+      break
+  }
+}
+
 watch(editable, (next) => {
   if (!next) {
     inProgress.value = null
@@ -601,11 +770,15 @@ onMounted(() => {
   resizeObserver = new ResizeObserver(resizeCanvas)
   if (hostEl.value) resizeObserver.observe(hostEl.value)
   if (error.value) toasts.push({ message: error.value, kind: 'error' })
+  unsubEditorCommands = subscribeEvent((event) => {
+    if (event.kind === 'editor.command') handleEditorCommand(event.payload as EditorCommandPayload)
+  })
 })
 
 onBeforeUnmount(() => {
   if (saveTimer) clearTimeout(saveTimer)
   resizeObserver?.disconnect()
+  unsubEditorCommands?.()
 })
 
 const toolbarMeta: Record<Canvas2DToolbarButton, { label: string; icon: string; action: () => void; active?: () => boolean; disabled?: () => boolean }> = {
@@ -618,6 +791,8 @@ const toolbarMeta: Record<Canvas2DToolbarButton, { label: string; icon: string; 
   line: { label: t('core.editor.canvas.line'), icon: '╱', action: () => setTool('line'), active: () => activeTool.value === 'line' },
   arrow: { label: t('core.editor.canvas.arrow'), icon: '➔', action: () => setTool('arrow'), active: () => activeTool.value === 'arrow' },
   clear: { label: t('core.editor.canvas.clear'), icon: '∅', action: () => clearBoard() },
+  undo: { label: t('core.editor.undo'), icon: '↩', action: () => undo(), disabled: () => !canUndo.value },
+  redo: { label: t('core.editor.redo'), icon: '↪', action: () => redo(), disabled: () => !canRedo.value },
   front: { label: t('core.editor.canvas.front'), icon: '⇡', action: () => bringFront(), disabled: () => selectedIndex < 0 },
   back: { label: t('core.editor.canvas.back'), icon: '⇣', action: () => sendBack(), disabled: () => selectedIndex < 0 }
 }
@@ -662,6 +837,7 @@ const toolbarMeta: Record<Canvas2DToolbarButton, { label: string; icon: string; 
         @pointerup="onPointerUp"
         @pointercancel="onPointerUp"
         @wheel="onWheel"
+        @contextmenu="onContextMenu"
         @keydown="onKeyDown"
       ></canvas>
     </div>

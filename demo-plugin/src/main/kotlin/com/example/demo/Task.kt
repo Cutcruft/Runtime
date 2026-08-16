@@ -5,5 +5,6 @@ import runtime.domain.obj.ObjectRef
 data class Task(
     val title: String,
     val status: String,
-    val board: ObjectRef? = null
+    val board: ObjectRef? = null,
+    val order: Int = 0
 )

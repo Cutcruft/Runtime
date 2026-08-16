@@ -23,6 +23,12 @@
 .ui-button__icon {
   line-height: 1;
 }
+.ui-button__icon--img {
+  width: 1.05em;
+  height: 1.05em;
+  object-fit: contain;
+  vertical-align: -0.2em;
+}
 .ui-button__shortcut {
   margin-left: 0.35rem;
   padding: 0 0.3rem;

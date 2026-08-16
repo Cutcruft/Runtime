@@ -2,12 +2,22 @@ package com.example.demo
 
 import runtime.domain.command.Command
 import runtime.domain.command.CommandContext
+import runtime.domain.command.CommandParameter
 import runtime.domain.command.CommandResult
 import runtime.domain.obj.ObjectId
 import runtime.domain.obj.ObjectRef
 
-class CreateDocumentCommand : Command("createdocument", "Create a document", "Documents") {
-    override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
+class CreateDocumentCommand : Command(
+    "createdocument",
+    "Create a document",
+    "Documents",
+    parameters = listOf(
+        CommandParameter("title", "string", required = true, description = "Document title"),
+        CommandParameter("content", "string", required = false, description = "Initial content"),
+        CommandParameter("id", "uuid", required = false, description = "Explicit document id")
+    )
+) {
+    override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult {
         val p = params as? Map<*, *> ?: return CommandResult.error("Missing parameters")
         val title = p["title"] as? String ?: return CommandResult.error("Missing title")
         val content = p["content"] as? String ?: ""
@@ -28,7 +38,7 @@ class CreateDocumentCommand : Command("createdocument", "Create a document", "Do
 }
 
 class ListDocumentsCommand : Command("listdocuments", "List documents", "Documents") {
-    override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
+    override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult {
         val list = context.objectList<Document>(DOCUMENT_TYPE)
         val rows = list.list().mapNotNull { ref ->
             val doc = list.get(ref.objectId) ?: return@mapNotNull null
@@ -41,8 +51,13 @@ class ListDocumentsCommand : Command("listdocuments", "List documents", "Documen
     }
 }
 
-class LoadDocumentCommand : Command("loaddocument", "Load a document", "Documents") {
-    override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
+class LoadDocumentCommand : Command(
+    "loaddocument",
+    "Load a document",
+    "Documents",
+    parameters = listOf(CommandParameter("id", "uuid", required = true, description = "Document id"))
+) {
+    override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult {
         val p = params as? Map<*, *> ?: return CommandResult.error("Missing parameters")
         val id = parseId(p) ?: return CommandResult.error("Missing or invalid id")
         return context.withProjectLock {
@@ -57,8 +72,17 @@ class LoadDocumentCommand : Command("loaddocument", "Load a document", "Document
     }
 }
 
-class SaveDocumentCommand : Command("savedocument", "Save a document", "Documents") {
-    override suspend fun execute(context: CommandContext, params: Any?): CommandResult {
+class SaveDocumentCommand : Command(
+    "savedocument",
+    "Save a document",
+    "Documents",
+    parameters = listOf(
+        CommandParameter("id", "uuid", required = true, description = "Document id"),
+        CommandParameter("content", "string", required = true, description = "Document content"),
+        CommandParameter("title", "string", required = false, description = "New title")
+    )
+) {
+    override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult {
         val p = params as? Map<*, *> ?: return CommandResult.error("Missing parameters")
         val id = parseId(p) ?: return CommandResult.error("Missing or invalid id")
         val content = p["content"] as? String ?: return CommandResult.error("Missing content")

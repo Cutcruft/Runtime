@@ -12,21 +12,39 @@ import runtime.domain.storage.EntityStore
  * - `memory` → in-memory with optional per-entity LRU cap (`storage.memory.maxEntities`).
  * - `files` → in-memory hot layer + atomic JSON files (write-behind flush).
  * - `hybrid` → capped hot LRU layer + files as the cold layer (load-on-miss).
- * - `redis` / `db` → rejected until implemented.
+ * - `redis` → in-memory hot layer + Redis as the cold layer.
+ * - `db` → in-memory hot layer + JDBC/H2 as the cold layer.
  */
+data class StorageResult(
+    val store: EntityStore,
+    val coldStore: ColdStore?
+)
+
 class StorageFactory {
 
-    fun create(config: StorageConfig, entityRegistry: EntityRegistry): EntityStore {
+    fun create(config: StorageConfig, entityRegistry: EntityRegistry): StorageResult {
         if (config.backend == "redis") {
-            throw IllegalStateException("storage backend 'redis' is not implemented yet")
+            val url = config.redisUrl
+                ?: throw IllegalArgumentException("storage.redis.url must be set for 'redis' backend")
+            val cold = RedisColdStore(url, entityRegistry)
+            return StorageResult(
+                store = DefaultEntityStore(cold = cold, maxEntities = config.maxEntities),
+                coldStore = cold
+            )
         }
         if (config.backend == "db") {
-            throw IllegalStateException("storage backend 'db' is not implemented yet")
+            val url = config.dbUrl
+                ?: throw IllegalArgumentException("storage.db.url must be set for 'db' backend")
+            val cold = DbColdStore(url, entityRegistry)
+            return StorageResult(
+                store = DefaultEntityStore(cold = cold, maxEntities = config.maxEntities),
+                coldStore = cold
+            )
         }
         val supported = setOf("memory", "files", "hybrid")
         if (config.backend !in supported) {
             throw IllegalArgumentException(
-                "Unknown storage backend '${config.backend}' (supported: $supported; 'redis'/'db' not implemented yet)"
+                "Unknown storage backend '${config.backend}' (supported: $supported)"
             )
         }
         if (config.maxEntities == 0) {
@@ -47,6 +65,9 @@ class StorageFactory {
             config.backend == "files" -> -1
             else -> config.maxEntities
         }
-        return DefaultEntityStore(cold = cold, maxEntities = cap)
+        return StorageResult(
+            store = DefaultEntityStore(cold = cold, maxEntities = cap),
+            coldStore = cold
+        )
     }
 }

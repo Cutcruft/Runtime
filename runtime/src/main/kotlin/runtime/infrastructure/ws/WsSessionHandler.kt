@@ -18,25 +18,19 @@ import kotlinx.coroutines.sync.withLock
 import runtime.application.session.CommandDispatchService
 import runtime.domain.command.CommandResult
 import runtime.domain.models.Messages
+import runtime.domain.models.ProjectId
 import runtime.domain.models.Session
 import runtime.domain.repositories.SessionRepository
 
-/**
- * Handles a WebSocket session.
- *
- * Messages are processed with bounded parallelism: up to [concurrencyLimit]
- * worker coroutines consume envelopes from a bounded channel (capacity =
- * [concurrencyLimit]). When the channel is full, the incoming flow suspends,
- * applying back-pressure instead of buffering unlimited work. Results are
- * matched by `requestId` on the client, so responses may arrive out of order.
- *
- * All frames written back are serialized through a per-session [Mutex].
- */
 class WsSessionHandler(
     private val dispatchService: CommandDispatchService,
     private val sessionRepository: SessionRepository,
     private val activeSessions: MutableMap<String, DefaultWebSocketSession>,
     private val messages: Messages,
+    private val presenceManager: PresenceManager,
+    private val eventPublisher: WsEventPublisher,
+    private val collaborationEnabled: Boolean = false,
+    private val cursorsEnabled: Boolean = false,
     private val concurrencyLimit: Int = 8
 ) {
     suspend fun handle(session: DefaultWebSocketSession) {
@@ -47,13 +41,17 @@ class WsSessionHandler(
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val sendMutex = Mutex()
         val channel = Channel<WsEnvelope>(capacity = concurrencyLimit)
+        var boundProjectId: ProjectId? = null
 
         try {
             val workers = (1..concurrencyLimit).map {
                 scope.launch {
                     for (envelope in channel) {
                         try {
-                            handleEnvelope(session, sessionId, envelope, sendMutex)
+                            val result = handleEnvelope(session, sessionId, envelope, sendMutex)
+                            if (result is HandleResult.ProjectBound) {
+                                boundProjectId = result.projectId
+                            }
                         } catch (e: Exception) {
                             sendErrorLocked(
                                 session, sendMutex, envelope,
@@ -83,10 +81,24 @@ class WsSessionHandler(
                 messages.format(Messages.COMMAND_EXECUTION_FAILED, "message" to (e.message ?: ""))
             )
         } finally {
+            if (collaborationEnabled && boundProjectId != null) {
+                val identity = presenceManager.leave(boundProjectId!!, sessionId)
+                eventPublisher.unbindSession(sessionId)
+                if (identity != null) {
+                    broadcastPresence(boundProjectId!!, WsMessageType.PRESENCE_LEAVE, sessionId, identity)
+                }
+            } else {
+                eventPublisher.unbindSession(sessionId)
+            }
             scope.cancel()
             activeSessions.remove(sessionId)
             sessionRepository.remove(sessionId)
         }
+    }
+
+    private sealed interface HandleResult {
+        data object Ok : HandleResult
+        data class ProjectBound(val projectId: ProjectId) : HandleResult
     }
 
     private suspend fun handleEnvelope(
@@ -94,22 +106,130 @@ class WsSessionHandler(
         sessionId: String,
         envelope: WsEnvelope,
         sendMutex: Mutex
+    ): HandleResult {
+        when (envelope.type) {
+            WsMessageType.COMMAND_EXECUTE.value -> {
+                val commandId = envelope.payload["commandId"] as? String
+                    ?: return HandleResult.Ok.also {
+                        sendErrorLocked(session, sendMutex, envelope, messages[Messages.MISSING_COMMAND_ID])
+                    }
+                val params = envelope.payload["params"]
+
+                val result = dispatchService.dispatch(sessionId, commandId, params)
+
+                when (result) {
+                    is CommandDispatchService.DispatchResult.Result ->
+                        sendCommandResult(session, sendMutex, envelope, result.commandResult)
+                    is CommandDispatchService.DispatchResult.Protocol ->
+                        sendErrorLocked(session, sendMutex, envelope, result.message)
+                }
+
+                if (result is CommandDispatchService.DispatchResult.Result) {
+                    @Suppress("UNCHECKED_CAST")
+                    val value = result.commandResult.value as? Map<String, Any?>
+                    val projectIdStr = value?.get("projectId") as? String
+                    if (projectIdStr != null) {
+                        val projectId = try {
+                            ProjectId(UUID.fromString(projectIdStr))
+                        } catch (_: Exception) { null }
+                        if (projectId != null) {
+                            eventPublisher.bindSession(sessionId, projectId)
+                            if (collaborationEnabled) {
+                                handlePresenceJoin(sessionId, projectId, null, sendMutex)
+                            }
+                            return HandleResult.ProjectBound(projectId)
+                        }
+                    }
+                }
+                return HandleResult.Ok
+            }
+            WsMessageType.CLIENT_IDENTITY.value -> {
+                if (!collaborationEnabled) return HandleResult.Ok
+                val name = envelope.payload["name"] as? String ?: "Anonymous"
+                val color = envelope.payload["color"] as? String
+                val projectId = resolveSessionProject(sessionId)
+                if (projectId != null) {
+                    handlePresenceJoin(sessionId, projectId, envelope, sendMutex, name, color)
+                }
+                return HandleResult.Ok
+            }
+            WsMessageType.CURSOR_UPDATE.value -> {
+                if (!cursorsEnabled || !collaborationEnabled) return HandleResult.Ok
+                val projectId = resolveSessionProject(sessionId) ?: return HandleResult.Ok
+                val enrichedPayload = LinkedHashMap(envelope.payload as? Map<String, Any?> ?: emptyMap())
+                enrichedPayload["sessionId"] = sessionId
+                val enriched = WsEnvelope(envelope.type, envelope.requestId, enrichedPayload)
+                broadcastToProjectExcept(projectId, sessionId, enriched)
+                return HandleResult.Ok
+            }
+            else -> {
+                sendErrorLocked(session, sendMutex, envelope, messages.format(Messages.UNKNOWN_MESSAGE_TYPE, "type" to envelope.type))
+                return HandleResult.Ok
+            }
+        }
+    }
+
+    private suspend fun handlePresenceJoin(
+        sessionId: String,
+        projectId: ProjectId,
+        identityEnvelope: WsEnvelope?,
+        sendMutex: Mutex,
+        name: String? = null,
+        color: String? = null
     ) {
-        if (envelope.type != WsMessageType.COMMAND_EXECUTE.value) {
-            return sendErrorLocked(session, sendMutex, envelope, messages.format(Messages.UNKNOWN_MESSAGE_TYPE, "type" to envelope.type))
-        }
-        val commandId = envelope.payload["commandId"] as? String
-            ?: return sendErrorLocked(session, sendMutex, envelope, messages[Messages.MISSING_COMMAND_ID])
-        val params = envelope.payload["params"]
+        val identityName = name ?: (identityEnvelope?.payload?.get("name") as? String) ?: "Anonymous"
+        val identityColor = color ?: identityEnvelope?.payload?.get("color") as? String
+        val identity = ParticipantIdentity(name = identityName, color = identityColor)
+        presenceManager.join(projectId, sessionId, identity)
 
-        val result = dispatchService.dispatch(sessionId, commandId, params)
+        val participants = presenceManager.participants(projectId)
+        val listEnvelope = WsEnvelope(
+            type = WsMessageType.PRESENCE_LIST.value,
+            payload = mapOf(
+                "participants" to participants.map { p ->
+                    mapOf(
+                        "sessionId" to p.sessionId,
+                        "name" to p.identity.name,
+                        "color" to p.identity.color
+                    )
+                }
+            )
+        )
+        broadcastToProject(projectId, listEnvelope)
+    }
 
-        when (result) {
-            is CommandDispatchService.DispatchResult.Result ->
-                sendCommandResult(session, sendMutex, envelope, result.commandResult)
-            is CommandDispatchService.DispatchResult.Protocol ->
-                sendErrorLocked(session, sendMutex, envelope, result.message)
+    private suspend fun broadcastPresence(
+        projectId: ProjectId,
+        type: WsMessageType,
+        sessionId: String,
+        identity: ParticipantIdentity
+    ) {
+        val envelope = WsEnvelope(
+            type = type.value,
+            payload = mapOf(
+                "sessionId" to sessionId,
+                "name" to identity.name,
+                "color" to identity.color
+            )
+        )
+        broadcastToProject(projectId, envelope)
+    }
+
+    private suspend fun broadcastToProject(projectId: ProjectId, envelope: WsEnvelope) {
+        eventPublisher.broadcastToProject(projectId, envelope)
+    }
+
+    private suspend fun broadcastToProjectExcept(projectId: ProjectId, exceptSessionId: String, envelope: WsEnvelope) {
+        val sessions = dispatchService.getSessionsForProject(projectId)
+        for (session in sessions) {
+            if (session.sessionId == exceptSessionId) continue
+            eventPublisher.sendToSession(session.sessionId, envelope)
         }
+    }
+
+    private fun resolveSessionProject(sessionId: String): ProjectId? {
+        val session = sessionRepository.get(sessionId) ?: return null
+        return session.project?.id
     }
 
     private suspend fun sendCommandResult(

@@ -16,7 +16,19 @@ data class WorkspaceConfiguration(
     val i18n: I18nConfiguration,
     val transport: TransportConfig,
     val routing: RoutingConfiguration,
-    val protocol: ProtocolDocsConfiguration = ProtocolDocsConfiguration()
+    val protocol: ProtocolDocsConfiguration = ProtocolDocsConfiguration(),
+    val dev: DevModeInfo = DevModeInfo(),
+    val collaboration: CollaborationInfo = CollaborationInfo()
+)
+
+data class DevModeInfo(
+    val enabled: Boolean = false,
+    val pollIntervalMs: Long = 0
+)
+
+data class CollaborationInfo(
+    val enabled: Boolean = false,
+    val cursorsEnabled: Boolean = false
 )
 
 /** Shell URL routing: `hash` (`#/page/<id>`) or `history` (`/page/<id>`), plus page redirects. */

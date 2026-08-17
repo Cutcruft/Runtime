@@ -4,6 +4,8 @@ import { WS_MESSAGE_TYPES, type CommandResultPayload, type WsEnvelope } from '..
 import { emitEvent } from '../events/eventBus'
 import { configStore } from './config'
 import { dataStore } from './data'
+import { presenceStore } from './presence'
+import { cursorStore } from './cursors'
 import { toasts } from './toasts'
 
 const wsStatus = ref<WsStatus>('disconnected')
@@ -22,14 +24,22 @@ export const sessionStore = {
   get isConnected(): boolean {
     return wsStatus.value === 'connected'
   },
+  get localParticipant() {
+    return presenceStore.localParticipant
+  },
 
   init(): void {
     const wsPath = configStore.transport?.wsPath ?? '/ws'
     client = new WsClient(wsPath)
     client.onStatusChange = (status) => {
       wsStatus.value = status
-      if (status === 'connected' && reconnectProjectId) {
-        openProject(reconnectProjectId)
+      if (status === 'connected') {
+        sendIdentityIfCollaborationEnabled()
+        if (reconnectProjectId) {
+          openProject(reconnectProjectId)
+        }
+      } else if (status === 'disconnected') {
+        presenceStore.clear()
       }
     }
     client.onEvent = (envelope) => handleIncoming(envelope)
@@ -41,12 +51,18 @@ export const sessionStore = {
     return client.execute(commandId, params)
   },
 
+  sendRaw(type: string, payload: Record<string, unknown>): void {
+    if (!client) return
+    client.sendRaw(type, payload)
+  },
+
   async createProject(): Promise<string> {
     const result = await executeChecked('project.create', null)
     const id = readProjectId(result)
     projectId.value = id
     reconnectProjectId = id
     dataStore.refreshAll()
+    sendIdentityIfCollaborationEnabled()
     return id
   },
 
@@ -55,6 +71,7 @@ export const sessionStore = {
     projectId.value = readProjectId(result)
     reconnectProjectId = id
     dataStore.refreshAll()
+    sendIdentityIfCollaborationEnabled()
     return id
   },
 
@@ -65,6 +82,27 @@ export const sessionStore = {
     }
     return result
   }
+}
+
+function sendIdentityIfCollaborationEnabled(): void {
+  if (!configStore.collaboration?.enabled || !client) return
+  client.sendRaw(WS_MESSAGE_TYPES.CLIENT_IDENTITY, {
+    name: generateAnonymousName(),
+    color: generateColor()
+  })
+}
+
+function generateAnonymousName(): string {
+  const adjectives = ['Swift', 'Calm', 'Bright', 'Bold', 'Kind']
+  const nouns = ['Fox', 'Owl', 'Bear', 'Wolf', 'Hawk']
+  const adj = adjectives[Math.floor(Math.random() * adjectives.length)]
+  const noun = nouns[Math.floor(Math.random() * nouns.length)]
+  return `${adj} ${noun}`
+}
+
+function generateColor(): string {
+  const hue = Math.floor(Math.random() * 360)
+  return `hsl(${hue}, 70%, 50%)`
 }
 
 async function executeChecked(commandId: string, params: unknown): Promise<CommandResultPayload> {
@@ -97,6 +135,45 @@ function handleIncoming(envelope: WsEnvelope): void {
         dataStore.invalidate(entityType)
       }
       emitEvent({ kind: WS_MESSAGE_TYPES.OBJECT_CHANGED, payload: envelope.payload })
+      break
+    }
+    case WS_MESSAGE_TYPES.PRESENCE_LIST: {
+      const participants = envelope.payload.participants as Array<{ sessionId: string; name: string; color?: string }> | undefined
+      if (Array.isArray(participants)) {
+        presenceStore.updateParticipants(participants)
+      }
+      break
+    }
+    case WS_MESSAGE_TYPES.PRESENCE_JOIN: {
+      const participant = envelope.payload as { sessionId: string; name: string; color?: string }
+      if (participant?.sessionId) {
+        presenceStore.addParticipant(participant)
+      }
+      break
+    }
+    case WS_MESSAGE_TYPES.PRESENCE_LEAVE: {
+      const sessionId = envelope.payload.sessionId as string | undefined
+      if (sessionId) {
+        presenceStore.removeParticipant(sessionId)
+        cursorStore.removeCursor(sessionId)
+      }
+      break
+    }
+    case WS_MESSAGE_TYPES.CURSOR_UPDATE: {
+      const payload = envelope.payload
+      const sid = payload.sessionId as string | undefined
+      if (sid && configStore.collaboration?.cursorsEnabled) {
+        const participant = presenceStore.participants.find(p => p.sessionId === sid)
+        cursorStore.updateCursor({
+          sessionId: sid,
+          name: (payload.name as string) ?? participant?.name ?? 'Anonymous',
+          color: (payload.color as string) ?? participant?.color ?? '#999',
+          entityType: payload.entityType as string,
+          objectId: payload.objectId as string,
+          position: payload.position,
+          selection: payload.selection as unknown
+        })
+      }
       break
     }
     case WS_MESSAGE_TYPES.ERROR: {

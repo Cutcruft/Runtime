@@ -3,7 +3,12 @@ export const WS_MESSAGE_TYPES = {
   COMMAND_RESULT: 'command.result',
   PROJECT_EVENT: 'project.event',
   OBJECT_CHANGED: 'object.changed',
-  ERROR: 'error'
+  ERROR: 'error',
+  PRESENCE_JOIN: 'presence.join',
+  PRESENCE_LEAVE: 'presence.leave',
+  PRESENCE_LIST: 'presence.list',
+  CLIENT_IDENTITY: 'client.identity',
+  CURSOR_UPDATE: 'cursor.update'
 } as const
 
 export type WsMessageType = (typeof WS_MESSAGE_TYPES)[keyof typeof WS_MESSAGE_TYPES]
@@ -37,10 +42,31 @@ export interface ErrorPayload {
   message: string
 }
 
+export interface ParticipantPayload {
+  sessionId: string
+  name: string
+  color?: string
+}
+
+export interface PresenceListPayload {
+  participants: ParticipantPayload[]
+}
+
+export interface CursorUpdatePayload {
+  entityType: string
+  objectId: string
+  position: unknown
+  selection?: unknown
+}
+
 export type EventKind =
   | 'object.changed'
   | 'project.event'
   | 'error'
+  | 'presence.join'
+  | 'presence.leave'
+  | 'presence.list'
+  | 'cursor.update'
   | 'navigation.request'
   | 'command.request'
   | 'shortcut.triggered'

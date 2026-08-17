@@ -36,6 +36,9 @@
         <kotlinx.serialization.version>1.8.0</kotlinx.serialization.version>
         <junit.version>5.11.0</junit.version>
         <mockk.version>1.13.12</mockk.version>
+        <lettuce.version>6.4.2.RELEASE</lettuce.version>
+        <h2.version>2.3.232</h2.version>
+        <hikaricp.version>5.1.0</hikaricp.version>
         <dokka.version>2.2.0</dokka.version>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
@@ -162,6 +165,27 @@
                 <artifactId>kotlin-test-junit5</artifactId>
                 <version>${kotlin.version}</version>
                 <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.lettuce</groupId>
+                <artifactId>lettuce-core</artifactId>
+                <version>${lettuce.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>io.netty</groupId>
+                        <artifactId>*</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+            <dependency>
+                <groupId>com.h2database</groupId>
+                <artifactId>h2</artifactId>
+                <version>${h2.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.zaxxer</groupId>
+                <artifactId>HikariCP</artifactId>
+                <version>${hikaricp.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

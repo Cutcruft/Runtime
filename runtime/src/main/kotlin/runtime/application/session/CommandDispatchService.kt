@@ -10,6 +10,7 @@ import runtime.domain.models.Messages
 import runtime.domain.models.Project
 import runtime.domain.models.ProjectId
 import runtime.domain.models.RuntimeEvent
+import runtime.domain.models.Session
 
 class CommandDispatchService(
     private val projectService: ProjectService,
@@ -104,5 +105,9 @@ class CommandDispatchService(
         ProjectId(UUID.fromString(value))
     } catch (e: IllegalArgumentException) {
         null
+    }
+
+    fun getSessionsForProject(projectId: ProjectId): List<Session> {
+        return sessionManager.sessionsForProject(projectId)
     }
 }

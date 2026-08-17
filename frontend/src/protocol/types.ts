@@ -64,12 +64,21 @@ export interface SubscriptionEntry {
   params?: Record<string, unknown>
 }
 
+export interface CommandParameterEntry {
+  name: string
+  type: string
+  required: boolean
+  description: string
+}
+
 export interface CommandEntry {
   id: string
   description: string
   group?: string
   type?: string
   visibility?: string
+  steps?: string[]
+  parameters?: CommandParameterEntry[]
 }
 
 export interface EntityEntry {
@@ -115,6 +124,16 @@ export interface TransportConfig {
   wsPath: string
 }
 
+export interface ProtocolMessageDoc {
+  type: string
+  direction: string
+  description: string
+}
+
+export interface ProtocolDocs {
+  messages: ProtocolMessageDoc[]
+}
+
 export type RoutingMode = 'hash' | 'history'
 
 export interface RedirectRule {
@@ -133,6 +152,11 @@ export interface I18nConfiguration {
   messages: Record<string, Record<string, string>>
 }
 
+export interface DevModeInfo {
+  enabled: boolean
+  pollIntervalMs: number
+}
+
 export interface WorkspaceConfig {
   app: AppShell
   navigation: NavigationEntry[]
@@ -146,6 +170,14 @@ export interface WorkspaceConfig {
   i18n: I18nConfiguration
   transport: TransportConfig
   routing: RoutingConfig
+  protocol: ProtocolDocs
+  dev: DevModeInfo
+  collaboration: CollaborationConfig
+}
+
+export interface CollaborationConfig {
+  enabled: boolean
+  cursorsEnabled: boolean
 }
 
 export interface TableColumnsConfig {

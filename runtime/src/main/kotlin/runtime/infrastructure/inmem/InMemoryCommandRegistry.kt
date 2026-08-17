@@ -21,4 +21,8 @@ class InMemoryCommandRegistry : CommandRegistry {
     override fun get(id: String): Command? = commands[id]
 
     override fun all(): Map<String, Command> = commands.toMap()
+
+    override fun clear() {
+        commands.clear()
+    }
 }

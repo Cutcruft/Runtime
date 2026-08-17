@@ -10,6 +10,8 @@ import { Dnd } from '@antv/x6-plugin-dnd'
 import dagre from '@dagrejs/dagre'
 import '@antv/x6/dist/index.css'
 import { sessionStore } from '../store/session'
+import { configStore } from '../store/config'
+import { cursorStore } from '../store/cursors'
 import { i18nStore } from '../store/i18n'
 import { toasts } from '../store/toasts'
 import { useCfg } from '../renderer/useConfig'
@@ -61,6 +63,9 @@ let dnd: Dnd | null = null
 
 const canUndo = ref(false)
 const canRedo = ref(false)
+const cursorOverlayEl = ref<HTMLElement | null>(null)
+let cursorTimer: ReturnType<typeof setTimeout> | null = null
+let unsubCursorStore: (() => void) | null = null
 
 const BODY_DEFAULTS = { rx: 6, ry: 6, strokeWidth: 1.5 }
 const LABEL_DEFAULTS = { fontSize: 13, fontFamily: 'system-ui, sans-serif' }
@@ -384,6 +389,89 @@ function updateHistoryState(): void {
   canRedo.value = graph.value?.canRedo() ?? false
 }
 
+function broadcastCursor(nodeId: string, x: number, y: number): void {
+  if (!configStore.collaboration?.cursorsEnabled) return
+  const entityType = cfg.value.content?.entityType ?? ''
+  const objectId = (props.context?.row as Record<string, unknown>)?.id as string ?? ''
+  if (!entityType || !objectId) return
+  sessionStore.sendRaw('cursor.update', {
+    entityType,
+    objectId,
+    position: { nodeId, x, y },
+    selection: { nodeId },
+    name: sessionStore.localParticipant?.name ?? 'Anonymous',
+    color: sessionStore.localParticipant?.color ?? '#999'
+  })
+}
+
+function scheduleCursorBroadcast(nodeId: string, x: number, y: number): void {
+  if (cursorTimer) clearTimeout(cursorTimer)
+  cursorTimer = setTimeout(() => broadcastCursor(nodeId, x, y), 100)
+}
+
+function renderDiagramCursors(): void {
+  if (!cursorOverlayEl.value || !graph.value) return
+  const overlay = cursorOverlayEl.value
+  const entityType = cfg.value.content?.entityType ?? ''
+  const objectId = (props.context?.row as Record<string, unknown>)?.id as string ?? ''
+  const remoteCursors = cursorStore.getCursorsForObject(entityType, objectId)
+
+  const existing = new Map<string, HTMLElement>()
+  for (const child of Array.from(overlay.children)) {
+    const el = child as HTMLElement
+    const sid = el.dataset.cursorSession
+    if (sid) existing.set(sid, el)
+  }
+
+  const seen = new Set<string>()
+  for (const cursor of remoteCursors) {
+    seen.add(cursor.sessionId)
+    const pos = cursor.position as { nodeId?: string; x?: number; y?: number } | undefined
+    if (!pos) continue
+
+    let screenX: number
+    let screenY: number
+    if (pos.nodeId) {
+      const node = graph.value.getCellById(pos.nodeId)
+      if (!(node instanceof Node)) continue
+      const nodePos = node.position()
+      const zoom = graph.value.zoom()
+      const translate = graph.value.translate() as unknown as { x: number; y: number }
+      screenX = (nodePos.x + (pos.x ?? 0)) * zoom + translate.x
+      screenY = (nodePos.y + (pos.y ?? 0)) * zoom + translate.y
+    } else {
+      const zoom = graph.value.zoom()
+      const translate = graph.value.translate() as unknown as { x: number; y: number }
+      screenX = (pos.x ?? 0) * zoom + translate.x
+      screenY = (pos.y ?? 0) * zoom + translate.y
+    }
+
+    let el = existing.get(cursor.sessionId)
+    if (!el) {
+      el = document.createElement('div')
+      el.className = 'diagram-remote-cursor'
+      el.dataset.cursorSession = cursor.sessionId
+      const dot = document.createElement('div')
+      dot.className = 'diagram-remote-cursor__dot'
+      dot.style.background = cursor.color
+      const label = document.createElement('span')
+      label.className = 'diagram-remote-cursor__label'
+      label.style.background = cursor.color
+      label.textContent = cursor.name
+      el.appendChild(dot)
+      el.appendChild(label)
+      overlay.appendChild(el)
+    }
+    el.style.left = `${screenX}px`
+    el.style.top = `${screenY}px`
+    el.style.display = ''
+  }
+
+  for (const [sid, el] of existing) {
+    if (!seen.has(sid)) el.style.display = 'none'
+  }
+}
+
 function undo(): void {
   graph.value?.undo()
   updateHistoryState()
@@ -546,6 +634,22 @@ function setupGraph(): void {
   g.on('cell:change:attrs', () => scheduleSave())
   g.on('edge:connected', () => scheduleSave())
 
+  g.on('node:mousemove', ({ node, e }) => {
+    if (!configStore.collaboration?.cursorsEnabled) return
+    const mouse = e as unknown as MouseEvent
+    const nodePos = node.position()
+    const nodeSize = node.size()
+    const zoom = g.zoom()
+    const translate = g.translate() as unknown as { x: number; y: number }
+    const screenX = nodePos.x * zoom + translate.x
+    const screenY = nodePos.y * zoom + translate.y
+    const relX = (mouse.clientX - (hostEl.value?.getBoundingClientRect().left ?? 0) - screenX) / zoom
+    const relY = (mouse.clientY - (hostEl.value?.getBoundingClientRect().top ?? 0) - screenY) / zoom
+    scheduleCursorBroadcast(node.id, Math.max(0, Math.min(relX, nodeSize.width)), Math.max(0, Math.min(relY, nodeSize.height)))
+  })
+
+  unsubCursorStore = cursorStore.subscribe(renderDiagramCursors)
+
   graph.value = g
 
   if (value.value != null) {
@@ -568,7 +672,9 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (saveTimer) clearTimeout(saveTimer)
+  if (cursorTimer) clearTimeout(cursorTimer)
   unsubEditorCommands?.()
+  unsubCursorStore?.()
   graph.value?.dispose()
   graph.value = null
 })
@@ -616,7 +722,9 @@ const toolbarMeta: Record<DiagramToolbarButton, { label: string; icon: string; a
           {{ node.label ?? 'Node' }}
         </div>
       </aside>
-      <div class="ui-diagram__canvas" :class="{ 'ui-diagram__canvas--readonly': !editable }" ref="hostEl"></div>
+      <div class="ui-diagram__canvas" :class="{ 'ui-diagram__canvas--readonly': !editable }" ref="hostEl">
+        <div v-if="configStore.collaboration?.cursorsEnabled" ref="cursorOverlayEl" class="ui-diagram__cursor-overlay"></div>
+      </div>
     </div>
   </div>
 </template>
@@ -696,9 +804,42 @@ const toolbarMeta: Record<DiagramToolbarButton, { label: string; icon: string; a
 .ui-diagram__canvas {
   flex: 1;
   min-height: 0;
+  position: relative;
 }
 .ui-diagram__canvas :deep(.x6-graph) {
   width: 100%;
   height: 100%;
+}
+.ui-diagram__cursor-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+  overflow: hidden;
+}
+.diagram-remote-cursor {
+  position: absolute;
+  pointer-events: none;
+  transition: left 0.1s linear, top 0.1s linear;
+}
+.diagram-remote-cursor__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transform: translate(-4px, -4px);
+}
+.diagram-remote-cursor__label {
+  position: absolute;
+  top: -18px;
+  left: 4px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
 }
 </style>

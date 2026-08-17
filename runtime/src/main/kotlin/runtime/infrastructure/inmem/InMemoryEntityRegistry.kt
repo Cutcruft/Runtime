@@ -18,4 +18,8 @@ class InMemoryEntityRegistry : EntityRegistry {
     override fun exists(type: EntityType): Boolean = definitions.containsKey(type)
 
     override fun list(): Set<EntityType> = definitions.keys.toSet()
+
+    override fun clear() {
+        definitions.clear()
+    }
 }

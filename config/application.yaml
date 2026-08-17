@@ -5,3 +5,11 @@ server:
 plugins:
   directories:
     - plugins
+
+dev:
+  enabled: true
+  watchIntervalMs: 1000
+
+collaboration:
+  enabled: true
+  cursorsEnabled: false

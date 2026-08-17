@@ -11,4 +11,6 @@ interface EntityRegistry {
     fun exists(type: EntityType): Boolean
 
     fun list(): Set<EntityType>
+
+    fun clear()
 }

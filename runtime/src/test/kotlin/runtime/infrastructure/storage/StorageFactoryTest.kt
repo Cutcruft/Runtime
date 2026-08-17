@@ -26,8 +26,10 @@ class StorageFactoryTest {
         enabled: Boolean = false,
         maxEntities: Int = -1,
         eviction: String = "lru",
-        directory: String? = null
-    ) = StorageConfig(backend, enabled, maxEntities, eviction, directory ?: File(tempDir, "data").path, null, null)
+        directory: String? = null,
+        redisUrl: String? = null,
+        dbUrl: String? = null
+    ) = StorageConfig(backend, enabled, maxEntities, eviction, directory ?: File(tempDir, "data").path, redisUrl, dbUrl)
 
     @Test
     fun `unknown backend is rejected`() {
@@ -36,14 +38,19 @@ class StorageFactoryTest {
     }
 
     @Test
-    fun `redis backend is rejected until implemented`() {
-        val e = assertFailsWith<IllegalStateException> { StorageFactory().create(config(backend = "redis", enabled = true), registry) }
-        assertTrue(e.message!!.contains("not implemented"))
+    fun `redis backend requires url`() {
+        val e = assertFailsWith<IllegalArgumentException> {
+            StorageFactory().create(config(backend = "redis"), registry)
+        }
+        assertTrue(e.message!!.contains("redis.url"))
     }
 
     @Test
-    fun `db backend is rejected until implemented`() {
-        assertFailsWith<IllegalStateException> { StorageFactory().create(config(backend = "db", enabled = true), registry) }
+    fun `db backend requires url`() {
+        val e = assertFailsWith<IllegalArgumentException> {
+            StorageFactory().create(config(backend = "db"), registry)
+        }
+        assertTrue(e.message!!.contains("db.url"))
     }
 
     @Test
@@ -60,7 +67,8 @@ class StorageFactoryTest {
 
     @Test
     fun `disabled backend forces pure memory store`() {
-        val store = StorageFactory().create(config(backend = "hybrid", enabled = false, maxEntities = 5), registry)
+        val result = StorageFactory().create(config(backend = "hybrid", enabled = false, maxEntities = 5), registry)
+        val store = result.store
         val id = ProjectId.generate()
         store.open(id, setOf())
         assertFalse(store.exists(id), "no cold layer when storage is disabled")
@@ -69,7 +77,8 @@ class StorageFactoryTest {
 
     @Test
     fun `files backend keeps directory absent until flush`() {
-        val store = StorageFactory().create(config(backend = "files", enabled = true), registry)
+        val result = StorageFactory().create(config(backend = "files", enabled = true), registry)
+        val store = result.store
         val dir = File(tempDir, "data")
         assertFalse(dir.exists(), "directory is created lazily on first flush")
         val id = ProjectId.generate()
@@ -79,7 +88,8 @@ class StorageFactoryTest {
 
     @Test
     fun `hybrid backend caps the hot layer`() {
-        val store = StorageFactory().create(config(backend = "hybrid", enabled = true, maxEntities = 2), registry)
+        val result = StorageFactory().create(config(backend = "hybrid", enabled = true, maxEntities = 2), registry)
+        val store = result.store
         val id = ProjectId.generate()
         val type = EntityType("demo.x")
         store.open(id, setOf(type))

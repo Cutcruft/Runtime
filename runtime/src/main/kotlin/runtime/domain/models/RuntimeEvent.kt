@@ -10,7 +10,8 @@ sealed interface RuntimeEvent {
         override val projectId: ProjectId,
         val entityType: EntityType,
         val objectId: ObjectId,
-        val value: Any?
+        val value: Any?,
+        val senderSessionId: String? = null
     ) : RuntimeEvent
 
     data class ProjectEvent(

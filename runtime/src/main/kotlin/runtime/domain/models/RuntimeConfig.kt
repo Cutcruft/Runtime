@@ -11,7 +11,14 @@ data class RuntimeConfig(
     val routing: RoutingConfig,
     val ui: UiConfig,
     val i18n: I18nConfig,
-    val messages: Map<String, String>
+    val messages: Map<String, String>,
+    val dev: DevConfig = DevConfig(),
+    val collaboration: CollaborationConfig = CollaborationConfig()
+)
+
+data class CollaborationConfig(
+    val enabled: Boolean = false,
+    val cursorsEnabled: Boolean = false
 )
 
 /** URL routing of the shell. `mode`: `hash` (`#/page/<id>`) or `history` (`/page/<id>`). */
@@ -123,4 +130,10 @@ data class AppFields(
 data class ThemeConfig(
     val mode: String,
     val tokens: Map<String, String>
+)
+
+data class DevConfig(
+    val enabled: Boolean = false,
+    val watchIntervalMs: Long = 1000,
+    val watchPaths: List<String> = emptyList()
 )

@@ -4,12 +4,14 @@ import runtime.domain.models.Project
 import runtime.domain.models.ProjectId
 import runtime.domain.repositories.ProjectRepository
 import runtime.domain.storage.EntityStore
+import runtime.infrastructure.storage.ColdStore
 
 class ProjectService(
     private val projectRepository: ProjectRepository,
     private val projectFactory: ProjectFactory,
     private val serializer: ProjectSerializer,
-    private val store: EntityStore
+    private val store: EntityStore,
+    private val coldStore: ColdStore? = null
 ) {
     fun createProject(id: ProjectId): Project {
         val project = projectFactory.create(id)
@@ -27,7 +29,10 @@ class ProjectService(
         return project
     }
 
-    fun listProjects(): Set<ProjectId> = projectRepository.list()
+    fun listProjects(): Set<ProjectId> {
+        val coldProjects = coldStore?.listPersistedProjects() ?: emptySet()
+        return projectRepository.list() + coldProjects
+    }
 
     fun removeProject(id: ProjectId): Project? {
         store.close(id)

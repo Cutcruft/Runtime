@@ -1,5 +1,6 @@
 package runtime.infrastructure.web
 
+import java.util.concurrent.atomic.AtomicReference
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.jackson.jackson
@@ -18,10 +19,16 @@ import runtime.infrastructure.plugin.PluginAssetsService
 
 class HttpEndpoints(
     private val httpConfig: HttpConfig,
-    private val workspaceConfiguration: WorkspaceConfiguration,
+    workspaceConfiguration: WorkspaceConfiguration,
     private val pluginAssetsService: PluginAssetsService,
     private val routingMode: String = "hash"
 ) {
+    private val configRef = AtomicReference(workspaceConfiguration)
+
+    fun updateConfig(newConfig: WorkspaceConfiguration) {
+        configRef.set(newConfig)
+    }
+
     fun module(): Application.() -> Unit = {
         install(ContentNegotiation) {
             jackson()
@@ -29,7 +36,7 @@ class HttpEndpoints(
         routing {
             staticResources("/", httpConfig.staticRoot)
             get(httpConfig.configPath) {
-                call.respond(workspaceConfiguration)
+                call.respond(configRef.get())
             }
             get("/plugin-assets/{pluginId}/{path...}") {
                 val pluginId = call.parameters["pluginId"]

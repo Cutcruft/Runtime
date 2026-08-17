@@ -80,6 +80,11 @@ export class WsClient {
     })
   }
 
+  sendRaw(type: string, payload: Record<string, unknown>): void {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return
+    this.socket.send(encodeEnvelope({ type, payload }))
+  }
+
   private handleOpen(): void {
     this.reconnectAttempt = 0
     this.setStatus('connected')

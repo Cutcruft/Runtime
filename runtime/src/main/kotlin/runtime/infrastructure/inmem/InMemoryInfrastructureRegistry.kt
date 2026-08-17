@@ -30,4 +30,9 @@ class InMemoryInfrastructureRegistry : InfrastructureRegistry {
     override fun sources(): Map<String, DataSource> = sources.toMap()
 
     override fun sinks(): Map<String, DataSink> = sinks.toMap()
+
+    override fun clear() {
+        sources.clear()
+        sinks.clear()
+    }
 }

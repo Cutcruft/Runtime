@@ -127,6 +127,25 @@ class HttpEndpointsTest {
             assertTrue(response.body().contains("\"landingPageId\":\"boards\""))
             assertTrue(response.body().contains("\"mode\":\"hash\""))
             assertTrue(response.body().contains("\"from\":\"home\""))
+            assertTrue(response.body().contains("\"protocol\""))
+        }
+    }
+
+    @Test
+    fun `docs endpoint serves index html in hash mode`() {
+        withServer("hash") { port ->
+            val response = get(port, "/docs")
+            assertEquals(200, response.statusCode())
+            assertTrue(response.body().contains("<div id=\"app\">"))
+        }
+    }
+
+    @Test
+    fun `docs endpoint serves index html in history mode`() {
+        withServer("history") { port ->
+            val response = get(port, "/docs")
+            assertEquals(200, response.statusCode())
+            assertTrue(response.body().contains("<div id=\"app\">"))
         }
     }
 }

@@ -17,4 +17,6 @@ interface InfrastructureRegistry {
     fun sources(): Map<String, DataSource>
 
     fun sinks(): Map<String, DataSink>
+
+    fun clear()
 }

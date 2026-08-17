@@ -14,6 +14,12 @@ export default defineConfig({
       '/ws': {
         target: 'http://localhost:8080',
         ws: true
+      },
+      '/config': {
+        target: 'http://localhost:8080'
+      },
+      '/plugin-assets': {
+        target: 'http://localhost:8080'
       }
     }
   }

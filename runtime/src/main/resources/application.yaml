@@ -163,3 +163,12 @@ messages:
   description.list: "List all projects"
   description.save: "Serialize project state to JSON"
   description.load: "Restore project from serialized JSON data"
+
+dev:
+  enabled: false
+  watchIntervalMs: 1000
+  watchPaths: []
+
+collaboration:
+  enabled: false
+  cursorsEnabled: false

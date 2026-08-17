@@ -1,6 +1,7 @@
 package runtime.application.workspace
 
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -399,5 +400,80 @@ class WorkspaceConfigurationBuilderTest {
         )
         assertEquals("hash", config.routing.mode)
         assertTrue(config.routing.redirects.isEmpty())
+    }
+
+    @Test
+    fun `protocol messages are populated from live WsMessageType enum`() {
+        val config = WorkspaceConfigurationBuilder(uiConfig).build(
+            emptyList(),
+            InMemoryCommandRegistry(),
+            InMemoryEntityRegistry(),
+            loadedPluginIds = emptySet()
+        )
+        assertTrue(config.protocol.messages.isNotEmpty())
+        val types = config.protocol.messages.map { it.type }.toSet()
+        assertTrue("command.execute" in types)
+        assertTrue("command.result" in types)
+        assertTrue("error" in types)
+        assertTrue(config.protocol.messages.all { it.direction == "client" || it.direction == "server" })
+    }
+
+    @Test
+    fun `command parameters are mapped to config`() {
+        val commandRegistry = InMemoryCommandRegistry()
+        commandRegistry.register(
+            PluginId("demo"),
+            object : Command(
+                "create",
+                "Create a task",
+                "Tasks",
+                parameters = listOf(
+                    runtime.domain.command.CommandParameter("title", "string", required = true, description = "Task title")
+                )
+            ) {
+                override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult =
+                    CommandResult.success()
+            }
+        )
+        val config = WorkspaceConfigurationBuilder(uiConfig).build(
+            emptyList(),
+            commandRegistry,
+            InMemoryEntityRegistry(),
+            loadedPluginIds = setOf(PluginId("demo"))
+        )
+        val cmd = config.commands.first()
+        assertEquals(1, cmd.parameters.size)
+        assertEquals("title", cmd.parameters[0].name)
+        assertEquals("string", cmd.parameters[0].type)
+        assertTrue(cmd.parameters[0].required)
+        assertEquals("Task title", cmd.parameters[0].description)
+    }
+
+    @Test
+    fun `dev mode info is exposed in workspace configuration`() {
+        val config = WorkspaceConfigurationBuilder(
+            uiConfig,
+            devEnabled = true,
+            devPollIntervalMs = 2000
+        ).build(
+            emptyList(),
+            InMemoryCommandRegistry(),
+            InMemoryEntityRegistry(),
+            loadedPluginIds = emptySet()
+        )
+        assertTrue(config.dev.enabled)
+        assertEquals(2000L, config.dev.pollIntervalMs)
+    }
+
+    @Test
+    fun `dev mode defaults to disabled`() {
+        val config = WorkspaceConfigurationBuilder(uiConfig).build(
+            emptyList(),
+            InMemoryCommandRegistry(),
+            InMemoryEntityRegistry(),
+            loadedPluginIds = emptySet()
+        )
+        assertFalse(config.dev.enabled)
+        assertEquals(0L, config.dev.pollIntervalMs)
     }
 }

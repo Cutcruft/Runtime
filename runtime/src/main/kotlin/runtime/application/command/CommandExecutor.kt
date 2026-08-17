@@ -100,7 +100,7 @@ class CommandExecutor(
         }
 
         auditService.record(project.id, commandId, mapOf("params" to params), result, sessionId)
-        publishChanges(project, result)
+        publishChanges(project, result, sessionId)
         return result
     }
 
@@ -278,7 +278,7 @@ class CommandExecutor(
         const val MAX_PIPELINE_DEPTH = 8
     }
 
-    private suspend fun publishChanges(project: Project, result: CommandResult) {
+    private suspend fun publishChanges(project: Project, result: CommandResult, sessionId: String? = null) {
         val publisher = eventPublisher ?: return
         if (result.references.isEmpty()) return
         val singleValue = if (result.references.size == 1) result.value else null
@@ -288,7 +288,8 @@ class CommandExecutor(
                     projectId = project.id,
                     entityType = ref.entityType,
                     objectId = ref.objectId,
-                    value = singleValue
+                    value = singleValue,
+                    senderSessionId = sessionId
                 )
             )
         }

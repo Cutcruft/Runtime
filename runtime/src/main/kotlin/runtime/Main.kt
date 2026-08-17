@@ -32,6 +32,8 @@ import runtime.domain.plugin.PluginId
 import runtime.domain.repositories.CommandRegistry
 import runtime.domain.repositories.SessionRepository
 import runtime.infrastructure.configuration.ConfigLoader
+import runtime.infrastructure.dev.PluginWatcher
+import runtime.infrastructure.dev.RuntimeReloader
 import runtime.infrastructure.i18n.MessageCatalogLoader
 import runtime.infrastructure.inmem.InMemoryAuditLog
 import runtime.infrastructure.inmem.InMemoryCommandRegistry
@@ -49,6 +51,7 @@ import runtime.infrastructure.plugin.PluginAssetsService
 import runtime.infrastructure.script.KotlinScriptEngine
 import runtime.infrastructure.storage.StorageFactory
 import runtime.infrastructure.web.WebServer
+import runtime.infrastructure.ws.PresenceManager
 import runtime.infrastructure.ws.WsEventPublisher
 
 fun main(args: Array<String>) {
@@ -63,10 +66,11 @@ fun main(args: Array<String>) {
         val projectRepository = InMemoryProjectRepository()
         val sessionRepository: SessionRepository = InMemorySessionRepository()
 
-        val entityStore = StorageFactory().create(config.storage, entityRegistry)
+        val storageResult = StorageFactory().create(config.storage, entityRegistry)
+        val entityStore = storageResult.store
         val projectFactory = ProjectFactory(entityRegistry, entityStore)
         val projectSerializer = ProjectSerializer(entityRegistry, entityStore)
-        val projectService = ProjectService(projectRepository, projectFactory, projectSerializer, entityStore)
+        val projectService = ProjectService(projectRepository, projectFactory, projectSerializer, entityStore, storageResult.coldStore)
 
         val auditService = AuditService(
             enabled = config.audit.enabled,
@@ -84,7 +88,8 @@ fun main(args: Array<String>) {
 
         val activeSessions = mutableMapOf<String, DefaultWebSocketSession>()
         val sessionManager = SessionManager(sessionRepository, projectRepository)
-        val eventPublisher = WsEventPublisher(sessionManager, activeSessions)
+        val presenceManager = PresenceManager()
+        val eventPublisher = WsEventPublisher(sessionManager, activeSessions, presenceManager, config.collaboration.enabled)
         val infrastructureService = InfrastructureService(infrastructureRegistry, InfrastructureClientImpl())
 
         val uiDefinitions = mutableListOf<RegisteredUi>()
@@ -152,7 +157,13 @@ fun main(args: Array<String>) {
         }
 
         val workspaceConfiguration: WorkspaceConfiguration =
-            WorkspaceConfigurationBuilder(config.ui, config.ws.path, messageRegistry, config.routing)
+            WorkspaceConfigurationBuilder(
+                config.ui, config.ws.path, messageRegistry, config.routing,
+                devEnabled = config.dev.enabled,
+                devPollIntervalMs = if (config.dev.enabled) config.dev.watchIntervalMs else 0,
+                collaborationEnabled = config.collaboration.enabled,
+                collaborationCursorsEnabled = config.collaboration.cursorsEnabled
+            )
                 .build(uiDefinitions, commandRegistry, entityRegistry, loadedPluginIds)
 
         val webServer = WebServer(
@@ -162,15 +173,48 @@ fun main(args: Array<String>) {
             workspaceConfiguration = workspaceConfiguration,
             activeSessions = activeSessions,
             messages = messages,
-            pluginAssetsService = PluginAssetsService(descriptors)
+            pluginAssetsService = PluginAssetsService(descriptors),
+            presenceManager = presenceManager,
+            eventPublisher = eventPublisher
         )
         webServer.start()
 
         println("Runtime started on http://${config.server.host}:${config.server.port}")
-        java.lang.Runtime.getRuntime().addShutdownHook(Thread {
-            entityStore.closeAll()
-            println("Shutting down Runtime...")
-        })
+
+        // Dev-mode: start plugin watcher for hot-reload
+        if (config.dev.enabled) {
+            val watchPaths = config.dev.watchPaths.ifEmpty { config.plugins.directories }
+            val reloader = RuntimeReloader(
+                configPath = configPath,
+                entityRegistry = entityRegistry,
+                commandRegistry = commandRegistry,
+                infrastructureRegistry = infrastructureRegistry,
+                httpEndpoints = webServer.httpEndpoints,
+                pluginAssetsService = PluginAssetsService(descriptors),
+                activeSessions = activeSessions,
+                sessionRepository = sessionRepository,
+                messages = messages
+            )
+            val watcher = PluginWatcher(
+                watchDirs = watchPaths,
+                configFileName = config.plugins.configFileName,
+                pollIntervalMs = config.dev.watchIntervalMs,
+                onChange = { reloader.reload() }
+            )
+            watcher.start()
+            println("Dev-mode: watching plugins in $watchPaths for changes")
+
+            java.lang.Runtime.getRuntime().addShutdownHook(Thread {
+                watcher.stop()
+                entityStore.closeAll()
+                println("Shutting down Runtime...")
+            })
+        } else {
+            java.lang.Runtime.getRuntime().addShutdownHook(Thread {
+                entityStore.closeAll()
+                println("Shutting down Runtime...")
+            })
+        }
 
         Thread.currentThread().join()
     } catch (e: Exception) {

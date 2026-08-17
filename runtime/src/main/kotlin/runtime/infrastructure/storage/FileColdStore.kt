@@ -77,6 +77,13 @@ class FileColdStore(
     override fun availableTypes(projectId: ProjectId): Set<EntityType> =
         typesByProject[projectId] ?: discoverTypes(projectId).toMutableSet().also { typesByProject[projectId] = it }
 
+    override fun listPersistedProjects(): Set<ProjectId> =
+        root.listFiles { f -> f.isDirectory }
+            ?.filter { it.isDirectory && it.listFiles()?.any { f -> f.isFile && f.name.endsWith(".json") } == true }
+            ?.map { ProjectId(java.util.UUID.fromString(it.name)) }
+            ?.toSet()
+            ?: emptySet()
+
     override fun close(projectId: ProjectId) {
         typesByProject.remove(projectId)
     }

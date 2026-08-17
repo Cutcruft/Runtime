@@ -8,9 +8,9 @@
 
 ---
 
-## Текущий статус (16.08.2026)
+## Текущий статус (17.08.2026)
 
-**Готово:** Фазы 0–8, блоки B, D, A, C и E ядра, полный suite `mvn -o -pl runtime -am clean test` = 158 PASS (Block E: +18 storage-тестов, Фаза 9: +10 routing/embed/SPA-тестов), WS smoke всех типов команд PASS.
+**Готово:** Фазы 0–8, блоки B, D, A, C и E ядра, полный suite `mvn -o -pl runtime -am clean test` = 188 PASS (Block E: +18 storage-тестов, Фаза 9: +10 routing/embed/SPA-тестов, Фаза 10.2: +4 tests, Фаза 10.1: +4 tests, Фаза 12: +15 tests [PresenceManager: 8, WsEventPublisher: 5, ConfigLoader collaboration: 2], Phase 11 Redis/DB: +7 DbColdStoreTest), WS smoke всех типов команд PASS.
 
 **Ближайшие шаги по плану (порядок Q7: A → C → B → D → E):**
 - [x] D-остатки: SDK-шаблоны `EntityModelScript` (create/update/delete/validate, `references`) + интеграция в demo (`demo.taskcreate/update/delete/validate`); `Command` → `execute` (final, try/catch + JUL-лог) + protected `executeInternal`. Проверено: suite + WS smoke (SYSTEM + регрессия D-семейств) PASS.
@@ -18,7 +18,8 @@
 - [x] **Блок C** — авто-обнаружение `messages/<locale>.json` на classpath ядра (уже реализовано: `loadFromClasspathAll` + валидация locales/defaultLocale + ошибки старта; тест покрывает).
 - [x] **Блок E / Фаза 11** — хранилище: `EntityStore`, `ColdStore`, бэкенды `memory|files|hybrid` (LRU-эвакуация, write-behind flush, load-on-miss), `redis|db` — заготовка (rejected). Suite 148 PASS + 18 storage-тестов.
 - [x] **Фаза 9** — роутинг/эмбед/редиректы/адаптивность: `routing {mode, redirects}` в конфиге + валидация; router-стор (`#/page/<id>`, history-mode + SPA-fallback, deep-link/back-forward, цепочки редиректов с защитой от циклов); `/embed?page=<id>` без хрома + `UiFrame` (src `page:`/`asset:`/URL); адаптивная оболочка (бургер→drawer, топбар, авто-скролл табов) + container queries (UiCard/UiList/UiTable/UiForm, editors уже с ResizeObserver). Suite 158 PASS + оба smoke PASS. Осталась ручная визуальная проверка.
-- [ ] Фаза 10 — dev-режим + /docs + Storybook; Фаза 12 — коллаборация.
+- [x] **Фаза 10.1** — Dev-режим ядра: `dev.enabled` в конфиге (RuntimeConfig + application.yaml), WatchService- вотчер плагинов (JAR + config.yaml), RuntimeReloader (clear registries → re-discover → re-bootstrap → swap config), HttpEndpoints с AtomicReference<WorkspaceConfiguration>, PluginAssetsService.update(), фронт polling `/config` с hash comparison (configStore.startPollingIfNeeded), Vite proxy (/config, /plugin-assets). Suite 166 PASS.
+- [~] Фаза 10 — dev-режим + /docs + Storybook; Фаза 12 — коллаборация. **10.1 DONE, 10.2 DONE:** см. выше. Осталось: 10.3 Storybook.
 - [ ] Ручная визуальная проверка (Фаза 8.2): ПКМ на canvas/scene, стенсил+drag, `⌘Z`, layout.
 
 ---
@@ -364,7 +365,7 @@ SDK (sdk/src/main/kotlin/runtime/domain/command):
 
 Текущее состояние: `InMemoryProjectRepository` (безграничный CHM), `SynchronizedObjectList` (RW-lock), `InMemoryAuditLog` (COW-список), сессии/реестры — безграничные.
 
-- [ ] `storage.backend: memory|files|redis|db|hybrid`; `storage.memory.maxEntities` (cap), `storage.eviction: lru`; `storage.enabled: false` → чистая память (как сейчас).
+- [x] `storage.backend: memory|files|redis|db|hybrid`; `storage.memory.maxEntities` (cap), `storage.eviction: lru`; `storage.enabled: false` → чистая память (как сейчас).
 - [ ] Гранулярность eviction — **per-entity (Q6)**: LRU по `(projectId, entityType, objectId)`; требуется рефакторинг `Project` (держит `Map<EntityType, ObjectList>`) → `EntityStore` + интеграция всех команд (блок D даёт единую точку доступа через CommandContext).
 - [ ] Абстракция `EntityStore`: `get/put/remove(projectId, type, id)`, счётчик объектов/памяти, dirty-множество (для hybrid), снапшот-чтение.
 - [ ] Hybrid: hot-LRU слой (порог `maxEntities`) + cold (files/redis); write-behind flush батчами по (тип/проект), таймер/порог; load-on-miss при обращении.
@@ -438,13 +439,13 @@ SDK (sdk/src/main/kotlin/runtime/domain/command):
 ## Фаза 10 — Dev-режим ядра + автодокументация + Storybook
 
 ### 10.1 Dev-режим ядра (hot-reload у ядра)
-- [ ] `dev.enabled` в конфиге + режимы сборки фронта (dev: source maps, без минфикации; prod: текущая сборка).
-- [ ] Watch плагинов: изменение исходников/ресурсов плагина → пересборка JAR + рестарт runtime (hot-reload у ядра, разработчик пишет только плагины).
-- [ ] Живой релоад конфига на клиенте: поллинг `/config` (или SSE) → пересборка конфига в store → обновление UI без F5.
+- [x] `dev.enabled` в конфиге + режимы сборки фронта (dev: source maps, без минфикации; prod: текущая сборка).
+- [x] Watch плагинов: изменение исходников/ресурсов плагина → пересборка JAR + рестарт runtime (hot-reload у ядра, разработчик пишет только плагины).
+- [x] Живой релоад конфига на клиенте: поллинг `/config` (или SSE) → пересборка конфига в store → обновление UI без F5.
 - [ ] Стартер/шаблон плагина + документация «как собрать приложение на ядре».
 
 ### 10.2 Автодокументация: /docs
-- [ ] Страница /docs в конфиге ядра: команды (группы/описание/параметры) + WS-протокол (типы сообщений, envelope, ошибки) из живого конфига/дескрипторов.
+- [x] Страница /docs в конфиге ядра: команды (группы/описание/параметры) + WS-протокол (типы сообщений, envelope, ошибки) из живого конфига/дескрипторов.
 
 ### 10.3 Storybook
 - [ ] Storybook для builtin-компонентов и редакторов (mock-конфиги/данные, декларативные сценарии).
@@ -456,29 +457,29 @@ SDK (sdk/src/main/kotlin/runtime/domain/command):
 ### 11.1 Абстракция
 - [x] Интерфейс `EntityStore` (`domain/storage/EntityStore.kt`): per-entity операции, open/exists/close/flush; `ColdStore` (load/persist/hasType/exists/availableTypes/close/closeAll); бэкенд из конфига.
 - [x] Конфиг: `StorageConfig` (`backend: memory|files|redis|db|hybrid`, `enabled` false → чистая память, `memory.maxEntities`, `files.directory`, `redis.url`, `db.url`, `eviction: lru`) + парсинг в `ConfigLoader` + блок в `application.yaml` (default memory, пример hybrid комментарием).
-- [x] Фабрика `StorageFactory` по конфигу, DI в `Main` (shutdown hook → `entityStore.closeAll()`). Валидация: `redis`/`db` → IllegalStateException «not implemented yet», unknown backend / maxEntities=0 / eviction≠lru → IllegalArgumentException.
+- [x] Фабрика `StorageFactory` по конфигу, DI в `Main` (shutdown hook → `entityStore.closeAll()`). Возвращает `StorageResult(store, coldStore)`. Валидация: `redis`/`db` → требуют `url`; unknown backend / maxEntities=0 / eviction≠lru → IllegalArgumentException. ColdStore обогащает `ProjectService.listProjects()` (persisted projects visible after restart).
 - [x] `DefaultEntityStore`: COW-map (volatile snapshot-чтение, synchronized COW-запись), LRU per-entity по access-времени, dirty-множество `(project,type)`, load-on-miss из cold, flush перед вытеснением (union hot+cold), `flush(projectId)/flushAll/close/closeAll`.
 
 ### 11.2 Бэкенды
 - [x] `memory` — `DefaultEntityStore(cold = null)`, опциональный LRU-кап (`maxEntities`).
 - [x] `files` — `FileColdStore`: JSON `<dir>/<projectId>/<entityType>.json` `{"type","objects":[{"id","value"}]}`, атомарная запись (tmp+rename, ATOMIC_MOVE), идемпотентная загрузка, десериализация в зарегистрированный modelClass; каталог создаётся лениво; write-behind flush по dirty-бакетам.
-- [ ] `redis` — ключи `cc:entity:<project>:<type>:<id>`, пайплайн-батчи (группировка). (не реализовано — фабрика бросает «not implemented yet»)
-- [ ] `db` (необходимо еще продумать меня смущает, что целиком проекты в одну строку пишутся) — таблицы `projects`, `entities`, `audit_log`; индексы; пакетная запись; транзакции. (не реализовано — фабрика бросает «not implemented yet»)
+- [x] `redis` — `RedisColdStore`: ключи `cc:projects` (SET ID), `cc:types:{projectId}` (SET type), `cc:entity:{projectId}:{type}` (HASH id→JSON), Lettuce (Netty исключён из транзитивных зависимостей — конфликт с Ktor 4.2).
+- [x] `db` — `DbColdStore`: H2 (in-memory/file), HikariCP connection pool; таблицы `projects` (project_id PK), `entities` (project_id+type+object_id PK, value TEXT); индексы, транзакции; `listPersistedProjects()` через SELECT.
 - [x] `hybrid` — hot-слой в памяти (LRU, порог `maxEntities`), cold — files; вытеснение по доступу с flush (union) в cold; load-on-miss (get восстанавливает вытесненное из cold).
 
 ### 11.3 Интеграция и проверка
 - [x] Все команды через `EntityStore`: `ProjectFactory`/`ProjectSerializer`/`ProjectService` переведены на store; `StoreObjectList` — ObjectList-фасад; `ProjectService.reopen` реидрируется после «рестарта» (`store.exists`); `project.save/load` сохраняют JSON-семантику.
-- [x] Тесты (+18, suite 130 → **148 PASS**): `InMemoryEntityStoreTest` (CRUD, facade, LRU-eviction, unlimited), `FileEntityStoreTest` (round-trip через flush+reopen, removals persist, ProjectService реидратация, no `.tmp` leftovers), `HybridEntityStoreTest` (eviction+reload, closeAll→reopen), `StorageFactoryTest` (invalid configs: unknown/redis/db/maxEntities=0/eviction, disabled→memory, files lazy dir, hybrid cap).
+- [x] Тесты (+25, suite 130 → **155 PASS**): `InMemoryEntityStoreTest` (CRUD, facade, LRU-eviction, unlimited), `FileEntityStoreTest` (round-trip через flush+reopen, removals persist, ProjectService реидратация, no `.tmp` leftovers), `HybridEntityStoreTest` (eviction+reload, closeAll→reopen), `StorageFactoryTest` (invalid configs: unknown/redis/db url required/maxEntities=0/eviction, disabled→memory, files lazy dir, hybrid cap), `DbColdStoreTest` (persist+load, exists, hasType, availableTypes, persist-empty-removes-type, listPersistedProjects, schema idempotency — 7 tests).
 - [x] Демо/`application.yaml`: default `memory`/`enabled: false`, пример `hybrid` комментарием.
 
 ---
 
 ## Фаза 12 — Коллаборация / конфигурируемое ядро
 
-- [ ] Публикация событий мутаций сущностей на WS (канал проекта) + `collaboration.enabled` (по умолчанию off → текущее поведение).
-- [ ] Присутствие: connect/disconnect, участники; идентичность — из плагина (`client.identity`), default anonymous (ядро не завязывается на single-user).
-- [ ] Курсоры: RichText-каретки и выделение в Diagram — включается конфигом, опционально.
-- [ ] Тесты: два WS-клиента, мутация → событие второму; `collaboration.enabled=false` — событий нет.
+- [x] Публикация событий мутаций сущностей на WS (канал проекта) + `collaboration.enabled` (по умолчанию off → текущее поведение).
+- [x] Присутствие: connect/disconnect, участники; идентичность — из плагина (`client.identity`), default anonymous (ядро не завязывается на single-user).
+- [x] Курсоры: RichText-каретки и выделение в Diagram — включается конфигом, опционально.
+- [x] Тесты: два WS-клиента, мутация → событие второму; `collaboration.enabled=false` — событий нет.
 
 ---
 

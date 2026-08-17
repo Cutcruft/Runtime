@@ -5,7 +5,9 @@ import org.yaml.snakeyaml.Yaml
 import runtime.domain.models.AppConfig
 import runtime.domain.models.AppFields
 import runtime.domain.models.AuditConfig
+import runtime.domain.models.CollaborationConfig
 import runtime.domain.models.CommandConfig
+import runtime.domain.models.DevConfig
 import runtime.domain.models.HttpConfig
 import runtime.domain.models.I18nConfig
 import runtime.domain.models.NavigationFields
@@ -58,6 +60,8 @@ class ConfigLoader(
         val ui = section(map, "ui")
         val i18n = section(map, "i18n")
         val routing = section(map, "routing")
+        val dev = section(map, "dev")
+        val collaboration = section(map, "collaboration")
         val routingMode = routing["mode"] as? String ?: "hash"
         if (routingMode !in setOf("hash", "history")) {
             throw IllegalArgumentException("Unsupported routing.mode '$routingMode' (supported: hash, history)")
@@ -152,6 +156,15 @@ class ConfigLoader(
             i18n = I18nConfig(
                 defaultLocale = i18n["defaultLocale"] as? String ?: "en",
                 locales = (i18n["locales"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+            ),
+            dev = DevConfig(
+                enabled = dev["enabled"] as? Boolean ?: false,
+                watchIntervalMs = (dev["watchIntervalMs"] as? Number)?.toLong() ?: 1000,
+                watchPaths = (dev["watchPaths"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+            ),
+            collaboration = CollaborationConfig(
+                enabled = collaboration["enabled"] as? Boolean ?: false,
+                cursorsEnabled = collaboration["cursorsEnabled"] as? Boolean ?: false
             )
         )
     }

@@ -3,7 +3,10 @@ package runtime.application.workspace
 import runtime.application.i18n.MessageRegistry
 import runtime.domain.models.AppConfiguration
 import runtime.domain.models.ComponentDefinition
+import runtime.domain.models.CollaborationInfo
 import runtime.domain.models.CommandEntry
+import runtime.domain.models.CommandParameterEntry
+import runtime.domain.models.DevModeInfo
 import runtime.domain.models.EntityEntry
 import runtime.domain.models.I18nConfiguration
 import runtime.domain.models.MenuItemEntry
@@ -11,6 +14,7 @@ import runtime.domain.models.NavigationEntry
 import runtime.domain.models.OverlayEntry
 import runtime.domain.models.OverlayTriggerEntry
 import runtime.domain.models.PageDefinition
+import runtime.domain.models.ProtocolDocsConfiguration
 import runtime.domain.models.RegisteredUi
 import runtime.domain.models.RedirectRuleConfiguration
 import runtime.domain.models.RoutingConfiguration
@@ -31,7 +35,11 @@ class WorkspaceConfigurationBuilder(
     private val uiConfig: UiConfig,
     private val wsPath: String = "/ws",
     private val messageRegistry: MessageRegistry? = null,
-    private val routing: RoutingConfig = RoutingConfig("hash", emptyList())
+    private val routing: RoutingConfig = RoutingConfig("hash", emptyList()),
+    private val devEnabled: Boolean = false,
+    private val devPollIntervalMs: Long = 0,
+    private val collaborationEnabled: Boolean = false,
+    private val collaborationCursorsEnabled: Boolean = false
 ) {
     fun build(
         uiDefinitions: List<RegisteredUi>,
@@ -87,7 +95,15 @@ class WorkspaceConfigurationBuilder(
                 mode = routing.mode,
                 redirects = routing.redirects.map { RedirectRuleConfiguration(from = it.from, to = it.to) }
             ),
-            protocol = ProtocolDocsConfiguration()
+            protocol = ProtocolDocsConfiguration(),
+            dev = DevModeInfo(
+                enabled = devEnabled,
+                pollIntervalMs = devPollIntervalMs
+            ),
+            collaboration = CollaborationInfo(
+                enabled = collaborationEnabled,
+                cursorsEnabled = collaborationCursorsEnabled
+            )
         )
     }
 

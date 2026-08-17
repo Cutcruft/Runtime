@@ -1,5 +1,6 @@
 import { createApp } from 'vue'
 import App from './App.vue'
+import DocsPage from './components/DocsPage.vue'
 import './styles/global.css'
 import { configStore } from './store/config'
 import { i18nStore } from './store/i18n'
@@ -15,11 +16,15 @@ import { pageStore } from './store/page'
 import { routerStore } from './store/router'
 import type { RuntimeEvent } from './protocol/envelope'
 
+const isDocs = location.pathname === '/docs'
+
 registerBuiltinComponents()
-registerEditor('richtext', () => import('./editor/UiRichText.vue'))
-registerEditor('diagram', () => import('./editor/UiDiagram.vue'))
-registerEditor('scene3d', () => import('./editor/UiScene3D.vue'))
-registerEditor('canvas2d', () => import('./editor/UiCanvas.vue'))
+if (!isDocs) {
+  registerEditor('richtext', () => import('./editor/UiRichText.vue'))
+  registerEditor('diagram', () => import('./editor/UiDiagram.vue'))
+  registerEditor('scene3d', () => import('./editor/UiScene3D.vue'))
+  registerEditor('canvas2d', () => import('./editor/UiCanvas.vue'))
+}
 
 function routeActionEvents(event: RuntimeEvent): void {
   if (event.kind === 'navigation.request') {
@@ -40,6 +45,11 @@ async function bootstrap(): Promise<void> {
     await configStore.load()
   } catch (error) {
     console.error('Failed to load workspace config:', error)
+  }
+
+  if (isDocs) {
+    createApp(DocsPage).mount('#app')
+    return
   }
 
   i18nStore.init(configStore.i18n)

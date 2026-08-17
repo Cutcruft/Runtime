@@ -98,4 +98,60 @@ class ConfigLoaderTest {
             file.delete()
         }
     }
+
+    @Test
+    fun `dev section defaults to disabled`() {
+        val config = ConfigLoader().load(null)
+        assertEquals(false, config.dev.enabled)
+        assertEquals(1000L, config.dev.watchIntervalMs)
+        assertTrue(config.dev.watchPaths.isEmpty())
+    }
+
+    @Test
+    fun `external dev section overrides defaults`() {
+        val file = File.createTempFile("runtime-config", ".yaml")
+        try {
+            file.writeText(
+                """
+                dev:
+                  enabled: true
+                  watchIntervalMs: 500
+                  watchPaths:
+                    - demo-plugin/src
+                """.trimIndent()
+            )
+            val config = ConfigLoader().load(file.absolutePath)
+            assertEquals(true, config.dev.enabled)
+            assertEquals(500L, config.dev.watchIntervalMs)
+            assertEquals(listOf("demo-plugin/src"), config.dev.watchPaths)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun `collaboration section defaults to disabled`() {
+        val config = ConfigLoader().load(null)
+        assertEquals(false, config.collaboration.enabled)
+        assertEquals(false, config.collaboration.cursorsEnabled)
+    }
+
+    @Test
+    fun `external collaboration section overrides defaults`() {
+        val file = File.createTempFile("runtime-config", ".yaml")
+        try {
+            file.writeText(
+                """
+                collaboration:
+                  enabled: true
+                  cursorsEnabled: true
+                """.trimIndent()
+            )
+            val config = ConfigLoader().load(file.absolutePath)
+            assertEquals(true, config.collaboration.enabled)
+            assertEquals(true, config.collaboration.cursorsEnabled)
+        } finally {
+            file.delete()
+        }
+    }
 }

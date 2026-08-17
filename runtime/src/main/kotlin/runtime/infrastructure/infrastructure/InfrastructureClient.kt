@@ -73,6 +73,8 @@ object EmptyInfrastructureRegistry : InfrastructureRegistry {
     override fun sources(): Map<String, DataSource> = emptyMap()
 
     override fun sinks(): Map<String, DataSink> = emptyMap()
+
+    override fun clear() {}
 }
 
 /** Client that rejects calls; default for executors that have no external connectors. */

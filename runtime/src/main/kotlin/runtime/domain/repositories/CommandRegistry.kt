@@ -11,4 +11,6 @@ interface CommandRegistry {
     fun get(id: String): Command?
 
     fun all(): Map<String, Command>
+
+    fun clear()
 }

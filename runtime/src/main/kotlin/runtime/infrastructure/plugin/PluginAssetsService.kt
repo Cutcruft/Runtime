@@ -12,7 +12,12 @@ class PluginAssetsService(
     descriptors: List<PluginDescriptor>,
     private val maxBytes: Long = 16L * 1024 * 1024
 ) {
-    private val byId = descriptors.associateBy { it.id.value }
+    @Volatile
+    private var byId = descriptors.associateBy { it.id.value }
+
+    fun update(descriptors: List<PluginDescriptor>) {
+        byId = descriptors.associateBy { it.id.value }
+    }
 
     data class Asset(val name: String, val bytes: ByteArray)
 

@@ -5,7 +5,7 @@ import runtime.domain.models.ProjectId
 import runtime.domain.obj.ObjectId
 
 /**
- * Cold (persistent) storage layer used by the files/hybrid backends.
+ * Cold (persistent) storage layer used by the files/hybrid/redis/db backends.
  * Write-behind: the hot layer flushes whole (project, type) buckets here.
  */
 interface ColdStore {
@@ -18,6 +18,9 @@ interface ColdStore {
     fun exists(projectId: ProjectId): Boolean
 
     fun availableTypes(projectId: ProjectId): Set<EntityType>
+
+    /** All project IDs that have persisted data. Default: empty (in-memory only). */
+    fun listPersistedProjects(): Set<ProjectId> = emptySet()
 
     fun close(projectId: ProjectId)
 

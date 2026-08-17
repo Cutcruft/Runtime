@@ -15,11 +15,13 @@ import Image from '@tiptap/extension-image'
 import Mention from '@tiptap/extension-mention'
 import type { SuggestionProps, SuggestionKeyDownProps } from '@tiptap/suggestion'
 import { sessionStore } from '../store/session'
+import { configStore } from '../store/config'
 import { i18nStore } from '../store/i18n'
 import { toasts } from '../store/toasts'
 import { useCfg } from '../renderer/useConfig'
 import { useData } from '../renderer/useData'
 import { loadData, resolveParams } from '../renderer/bindingEngine'
+import { RemoteCursors } from './RemoteCursors'
 import type {
   BindingContext,
   MentionSpec,
@@ -31,11 +33,13 @@ import type {
 const props = defineProps<{ config: Record<string, unknown>; context?: BindingContext }>()
 
 const t = i18nStore.t
-
 const cfg = useCfg<RichTextConfig>(props.config, {
   contentFormat: 'html',
   placeholder: ''
 })
+
+const entityType = computed(() => cfg.value.content?.entityType ?? '')
+const objectId = computed(() => (props.context?.row as Record<string, unknown>)?.id as string ?? '')
 
 const data = computed(() => cfg.value.content)
 const { value, error } = useData(
@@ -69,6 +73,7 @@ const extensions = computed(() => {
       : []),
     Underline,
     ...(cfg.value.mentions?.command ? [mentionExtension(cfg.value.mentions)] : []),
+    ...(configStore.collaboration?.cursorsEnabled ? [RemoteCursors.configure({ entityType, objectId })] : []),
     StarterKit.configure({
       heading: enabled('heading') ? { levels: [1, 2, 3] } : false,
       codeBlock: enabled('codeBlock') ? {} : false
@@ -238,6 +243,26 @@ const editor = useEditor({
 })
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
+let cursorTimer: ReturnType<typeof setTimeout> | null = null
+
+function broadcastCursor(): void {
+  if (!editor.value || !configStore.collaboration?.cursorsEnabled) return
+  const sel = editor.value.state.selection
+  if (!sel || !entityType.value || !objectId.value) return
+  sessionStore.sendRaw('cursor.update', {
+    entityType: entityType.value,
+    objectId: objectId.value,
+    position: { from: sel.from, to: sel.to },
+    selection: { anchor: sel.anchor, head: sel.head },
+    name: sessionStore.localParticipant?.name ?? 'Anonymous',
+    color: sessionStore.localParticipant?.color ?? '#999'
+  })
+}
+
+function scheduleCursorBroadcast(): void {
+  if (cursorTimer) clearTimeout(cursorTimer)
+  cursorTimer = setTimeout(broadcastCursor, 200)
+}
 
 function contentFor(format: RichTextContentFormat): string {
   if (!editor.value) return ''
@@ -291,6 +316,7 @@ watch(
     if (instance) {
       instance.setEditable(editable.value)
       instance.on('update', () => scheduleSave())
+      instance.on('selectionUpdate', () => scheduleCursorBroadcast())
     }
   }
 )
@@ -349,6 +375,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (saveTimer) clearTimeout(saveTimer)
+  if (cursorTimer) clearTimeout(cursorTimer)
   hideMentionPopup()
   editor.value?.destroy()
 })
@@ -468,6 +495,15 @@ onBeforeUnmount(() => {
 :global(.rt-mention-popup__item:hover),
 :global(.rt-mention-popup__item--active) {
   background: var(--rt-color-primary-soft, rgba(0, 0, 0, 0.06));
+}
+.ui-richtext__editor :deep(.rt-remote-caret) {
+  position: relative;
+}
+.ui-richtext__editor :deep(.rt-remote-caret__label) {
+  position: absolute;
+  top: -1.4em;
+  left: 0;
+  pointer-events: none;
 }
 
 </style>

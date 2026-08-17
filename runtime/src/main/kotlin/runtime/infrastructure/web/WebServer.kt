@@ -30,7 +30,11 @@ class WebServer(
     val eventPublisher: WsEventPublisher
 ) {
     val httpEndpoints: HttpEndpoints = HttpEndpoints(
-        config.http, workspaceConfiguration, pluginAssetsService, config.routing.mode
+        config.http,
+        workspaceConfiguration,
+        pluginAssetsService,
+        config.routing.mode,
+        uidocsEnabled = config.dev.enabled
     )
 
     fun start() {

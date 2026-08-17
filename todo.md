@@ -12,14 +12,17 @@
 
 **Готово:** Фазы 0–8, блоки B, D, A, C и E ядра, полный suite `mvn -o -pl runtime -am clean test` = 188 PASS (Block E: +18 storage-тестов, Фаза 9: +10 routing/embed/SPA-тестов, Фаза 10.2: +4 tests, Фаза 10.1: +4 tests, Фаза 12: +15 tests [PresenceManager: 8, WsEventPublisher: 5, ConfigLoader collaboration: 2], Phase 11 Redis/DB: +7 DbColdStoreTest), WS smoke всех типов команд PASS.
 
-**Ближайшие шаги по плану (порядок Q7: A → C → B → D → E):**
+**Ближайшие шаги по плану:**
 - [x] D-остатки: SDK-шаблоны `EntityModelScript` (create/update/delete/validate, `references`) + интеграция в demo (`demo.taskcreate/update/delete/validate`); `Command` → `execute` (final, try/catch + JUL-лог) + protected `executeInternal`. Проверено: suite + WS smoke (SYSTEM + регрессия D-семейств) PASS.
 - [x] **Блок A** — базовый UI-слой ядра: `ui.theme` глобальные токены (палитра/типографика/отступы/радиусы), `ui.pluginOrder`, entrypoint из ядра, `ui.nav.include/exclude`. Suite 130 PASS + live-проверка pluginOrder → nav/лендинг.
 - [x] **Блок C** — авто-обнаружение `messages/<locale>.json` на classpath ядра (уже реализовано: `loadFromClasspathAll` + валидация locales/defaultLocale + ошибки старта; тест покрывает).
 - [x] **Блок E / Фаза 11** — хранилище: `EntityStore`, `ColdStore`, бэкенды `memory|files|hybrid` (LRU-эвакуация, write-behind flush, load-on-miss), `redis|db` — заготовка (rejected). Suite 148 PASS + 18 storage-тестов.
 - [x] **Фаза 9** — роутинг/эмбед/редиректы/адаптивность: `routing {mode, redirects}` в конфиге + валидация; router-стор (`#/page/<id>`, history-mode + SPA-fallback, deep-link/back-forward, цепочки редиректов с защитой от циклов); `/embed?page=<id>` без хрома + `UiFrame` (src `page:`/`asset:`/URL); адаптивная оболочка (бургер→drawer, топбар, авто-скролл табов) + container queries (UiCard/UiList/UiTable/UiForm, editors уже с ResizeObserver). Suite 158 PASS + оба smoke PASS. Осталась ручная визуальная проверка.
-- [x] **Фаза 10.1** — Dev-режим ядра: `dev.enabled` в конфиге (RuntimeConfig + application.yaml), WatchService- вотчер плагинов (JAR + config.yaml), RuntimeReloader (clear registries → re-discover → re-bootstrap → swap config), HttpEndpoints с AtomicReference<WorkspaceConfiguration>, PluginAssetsService.update(), фронт polling `/config` с hash comparison (configStore.startPollingIfNeeded), Vite proxy (/config, /plugin-assets). Suite 166 PASS.
-- [~] Фаза 10 — dev-режим + /docs + Storybook; Фаза 12 — коллаборация. **10.1 DONE, 10.2 DONE:** см. выше. Осталось: 10.3 Storybook.
+- [x] **Фаза 10.1 старая / dev hot-reload** — реализованный инфраструктурный задел ядра (`dev.enabled`, WatchService, RuntimeReloader, polling `/config`, Vite proxy). Не является целевой dev-утилитой.
+- [~] **Фаза 10.1 новая** — отдельное Go-приложение разработчика, которое знает расположение Runtime и помогает создавать/собирать/проверять плагины. Пока только помечено в плане, без проектирования и реализации.
+- [ ] **Фаза 10.3 Storybook / UIDocs** — Storybook для builtin-компонентов и редакторов; собранная документация должна отдаваться Runtime по `/uidocs` только в dev-режиме, учитывать тему из ядра и работать через `/config`-adapter.
+- [ ] **Фаза 13.1** — модульность UI: Vue-компоненты регистрируются через JAR-плагины и SDK, редакторы выносятся в отдельные доверенные плагины, совместимость старых типов — только на период миграции.
+- [ ] **Фаза 14** — слои интерфейса через `/config`: несколько кусков UI с z-order/прозрачностью/pointer-events, накладываемые друг на друга.
 - [ ] Ручная визуальная проверка (Фаза 8.2): ПКМ на canvas/scene, стенсил+drag, `⌘Z`, layout.
 
 ---
@@ -208,8 +211,8 @@
 | Undo/redo | **Внутри редакторов** (локальные стеки команд): TipTap history есть; X6 history/clipboard/keyboard; canvas/scene — свой стек. Runtime не трогаем. |
 | Навигация | **Сайдбар + табы сразу**: дерево навигации по группам (sidebar), открытые страницы — табами; история вперёд/назад. |
 | Тёмная тема | **CSS-переменные + auto** (prefers-color-scheme) с переключателем light/dark/auto; `AppShell.theme.mode` — значение по умолчанию. |
-| Dev-режим | **Hot-reload у ядра**: разработчик получает собранное ядро и пишет плагины. `dev.enabled`; watch исходников плагинов (пересборка JAR + рестарт runtime); живой релоад конфига на клиенте (поллинг `/config` → обновление UI без F5); dev/prod в сборке (dev: source maps, без минфикации). |
-| Автодокументация | **Web-страница /docs** (команды с группами + WS-протокол из живого конфига/дескрипторов) + **Storybook** для UI-компонентов и редакторов (mock-конфиги). |
+| Dev-инструменты | **Отдельное Go-приложение разработчика**: знает, где находится Runtime, помогает создавать/собирать/проверять плагины и запускать сценарии разработки. Существующий hot-reload ядра остаётся инфраструктурным заделом, но целевой CLI пока только помечен в плане, без проектирования и реализации. |
+| Автодокументация | **Web-страница /docs** (команды с группами + WS-протокол из живого конфига/дескрипторов) + **Storybook/UIDocs** для UI-компонентов и редакторов. Собранный Storybook отдаётся Runtime по `/uidocs` только в dev-режиме, использует тему из ядра и `/config`-adapter; редакторы в UIDocs должны полностью перенастраиваться как plugin-provided Vue-компоненты. |
 | iframe и редиректы | **UiFrame** компонент (`{type:"Frame", src}`) + **редиректы из конфига** (`redirects: [{from, to}]`) + **эмбед-режим страниц** (`/embed?page=<id>`, без шапки/сайдбара/табов). |
 | Роутинг | **Оба стиля через конфиг**: hash (`#/page/<id>`) по умолчанию, опционально History API (`/page/<id>` с SPA-fallback). URL отражает активную страницу/табы, deep-link, браузерный back/forward. |
 | Картинки/иконки | **Иконки из ассетов плагина** (`icon/logo/image` → `/plugin-assets/<pluginId>/...`) + компонент **UiImage** (`src/fit/alt/ratio`). Встроенного набора иконок нет. |
@@ -436,19 +439,25 @@ SDK (sdk/src/main/kotlin/runtime/domain/command):
 
 ---
 
-## Фаза 10 — Dev-режим ядра + автодокументация + Storybook
+## Фаза 10 — Dev-инструменты + автодокументация + Storybook/UIDocs
 
-### 10.1 Dev-режим ядра (hot-reload у ядра)
-- [x] `dev.enabled` в конфиге + режимы сборки фронта (dev: source maps, без минфикации; prod: текущая сборка).
-- [x] Watch плагинов: изменение исходников/ресурсов плагина → пересборка JAR + рестарт runtime (hot-reload у ядра, разработчик пишет только плагины).
-- [x] Живой релоад конфига на клиенте: поллинг `/config` (или SSE) → пересборка конфига в store → обновление UI без F5.
-- [ ] Стартер/шаблон плагина + документация «как собрать приложение на ядре».
+### 10.1 Консольная dev-утилита на Go
+- [~] Целевое решение: отдельное Go-приложение разработчика, которое знает расположение Runtime и помогает создавать плагины, собирать их, проверять конфиги и запускать dev-сценарии.
+- [~] Пока только помечено в плане: **не проектировать детально и не реализовывать до отдельного решения**.
+- [x] Инфраструктурный задел ядра уже есть: `dev.enabled`, вотчер плагинов, `RuntimeReloader`, live reload `/config`, Vite proxy. Он остаётся полезным, но больше не является формулировкой пункта 10.1.
 
 ### 10.2 Автодокументация: /docs
 - [x] Страница /docs в конфиге ядра: команды (группы/описание/параметры) + WS-протокол (типы сообщений, envelope, ошибки) из живого конфига/дескрипторов.
 
-### 10.3 Storybook
-- [ ] Storybook для builtin-компонентов и редакторов (mock-конфиги/данные, декларативные сценарии).
+### 10.3 Storybook / UIDocs
+- [x] Базовый Storybook scaffold для Vue/Vite: `.storybook/*`, scripts `storybook`/`build-storybook`/`test-storybook`, первая story через `ComponentHost`.
+- [x] Runtime route `/uidocs` отдаёт собранный Storybook из `frontend/storybook-static` **только в dev-режиме** (`dev.enabled=true`); в prod маршрут не публикуется.
+- [x] Базовый `/config`-adapter: преобразует workspace config в UIDocs fixtures без отдельного формата.
+- [x] Mock runtime harness повторяет форму `/config`, регистрирует builtin-компоненты и применяет CSS-переменные темы ядра.
+- [ ] Расширить покрытие stories для всех builtin-компонентов и редакторов (mock-конфиги/данные, декларативные сценарии).
+- [ ] Редакторы в UIDocs должны быть интерактивными и полностью перенастраиваемыми: конфиг, данные, toolbar, readonly, save/load, overlays/menus, shortcuts, layers-preview.
+- [ ] Добавить visual regression/screenshot pipeline для Storybook/UIDocs.
+- [ ] Учесть стратегическое решение: все редакторы должны переехать в плагины как кастомные компоненты; Storybook проектировать как документацию и песочницу не только builtin, но и plugin-provided компонентов.
 
 ---
 
@@ -487,6 +496,77 @@ SDK (sdk/src/main/kotlin/runtime/domain/command):
 - [ ] Спроектировать и продумать возможность добавления кастомных компонентов в редакторы (Canvas2D, Diagram, Scene3D) через плагины; конфигурируемые свойства компонентов, события, рендеринг, взаимодействие с редактором.
 - [ ] Вынести из ядра компоненты интерфейса в плагины сделав максимально модульную систему 
 
+
+## Фаза 13.1 — Модульность UI: перенос компонентов и редакторов в плагины
+
+**Цель:** спроектировать улучшение модульности системы так, чтобы из frontend ядра постепенно переехало всё, что может жить в плагинах: редакторы, сложные widgets, визуальные primitives/расширения, stories и документация компонентов. Ядро должно оставаться runtime-shell, protocol/registry, renderer host и загрузчик assets/bundles.
+
+**Решения:**
+- Frontend custom components регистрируются **так же как сейчас регистрируются плагины**: через JAR-плагины.
+- JAR-плагин через SDK объявляет набор Vue-компонентов, их frontend bundle/assets/styles и JSON Schema конфигурации.
+- Зарегистрированные компоненты становятся доступными через Runtime другим плагинам для использования в их UI-конфигурации.
+- Frontend-bundles плагинов считаются полностью доверенным кодом, как и backend-код плагинов.
+- Каждый редактор (`RichText`, `Diagram`, `Scene3D`, `Canvas2D`) должен стать отдельным plugin-provided компонентом/плагином.
+- Для описания конфигурации компонента достаточно JSON Schema.
+- Старые типы редакторов остаются только как migration aliases на период переезда.
+
+### 13.1.1 Границы ядра и плагинов
+- [ ] Определить минимальный набор, который остаётся в ядре: `AppShell`, `PageView`, `SectionView`, `ComponentHost`, registries, binding/event engines, overlay/layer hosts, i18n/theme stores, `/config`, `/plugin-assets`, `/uidocs` в dev.
+- [ ] Определить переносимые части: все редакторы (`RichText`, `Diagram`, `Scene3D`, `Canvas2D`) и максимально возможный набор UI-компонентов как plugin-provided Vue-компоненты.
+- [ ] Сохранить обратную совместимость только на период миграции: существующие `type: "RichText"|"Diagram"|"Scene3D"|"Canvas"` работают через temporary compatibility aliases, после миграции aliases удаляются.
+
+### 13.1.2 SDK-контракт custom component plugin
+- [ ] Добавить в SDK декларацию frontend-компонентов JAR-плагина: component type/id, version, exposed Vue module, styles, assets, capabilities, JSON Schema, Storybook/UIDocs metadata.
+- [ ] Плагин может объявлять набор Vue-компонентов; Runtime агрегирует эти объявления и публикует их в `/config` как доступные component types.
+- [ ] Компоненты одного плагина должны быть доступны UI-конфигам других плагинов через общий registry Runtime.
+- [ ] Runtime должен валидировать, что UI-конфиг страницы ссылается только на зарегистрированные component types и совместимые versions/capabilities.
+
+### 13.1.3 Runtime/frontend registry и загрузка
+- [ ] Расширить `/config`: отдавать список frontend-компонентов плагинов, их bundles/styles/assets, JSON Schema для props/config и docs metadata.
+- [ ] Frontend registry грузит plugin bundles лениво, кэширует версии и изолирует ошибки загрузки, показывая fallback component.
+- [ ] Так как код плагинов полностью доверенный, базовая модель загрузки — direct module import/runtime registration без iframe sandbox; CSP/хеши можно оставить как дополнительную hardening-задачу позже.
+- [ ] Описать runtime client API для plugin component: eventBus, binding helpers, commands/data/save, i18n/theme, overlays, layers, collaboration hooks.
+
+### 13.1.4 Редакторы как отдельные plugin-provided компоненты
+- [ ] Спроектировать перенос `UiRichText`, `UiDiagram`, `UiScene3D`, `UiCanvas` в четыре отдельных editor-плагина с тем же контрактом data/save/actions/overlays/shortcuts/collaboration.
+- [ ] Для каждого редактора определить capability-флаги: `contentFormat`, `toolbar`, `mentions`, `stencil`, `history`, `layers`, `collaboration`, `assets`, `customShapes`/`customNodes`/`customObjects`.
+- [ ] UIDocs должен позволять полностью перенастраивать редакторы через controls, основанные на JSON Schema из `/config`, и проверять конфиг без изменения кода.
+
+### 13.1.5 Storybook/UIDocs для plugin components
+- [ ] UIDocs в dev подтягивает stories из ядра и из JAR-плагинов, применяя тему ядра из `/config`.
+- [ ] `/config`-adapter строит stories из живых страниц/компонентов, а plugin docs metadata добавляет ручные сценарии и controls.
+- [ ] Visual regression запускается по core stories и plugin stories, с матрицей тем light/dark/auto и ключевых responsive размеров.
+
+### 13.1.6 Безопасность, versioning и миграция
+- [ ] Зафиксировать модель полного доверия frontend-bundles плагинов; sandbox/подписи/CSP — не обязательны для MVP, только будущий hardening.
+- [ ] Продумать versioning SDK/frontend runtime API и migration path для старых плагинов.
+- [ ] Описать план удаления temporary aliases после выноса редакторов в отдельные плагины.
+
+---
+
+## Фаза 14 — Слои интерфейса через `/config`
+
+**Цель:** добавить в движок интерфейсов декларативные слои, чтобы страница могла состоять из нескольких независимых фрагментов UI с разным порядком наложения, прозрачностью и правилами обработки событий.
+
+**Базовое решение:** модель слоёв должна приходить через `/config`. Если у страницы нет `layers`, текущая модель `sections` остаётся обратимо совместимой и считается одним базовым слоем.
+
+### 14.1 Модель конфигурации
+- [ ] `PageDefinition.layers?: LayerDefinition[]` — новый опциональный список слоёв страницы.
+- [ ] `LayerDefinition`: `id`, `title?`, `order`/`zIndex`, `visible`, `opacity`, `position`, `bounds`, `background`, `className`, `style`, `sections` или `components`.
+- [ ] `pointerEvents: auto|none|pass-through`: `auto` — слой принимает события; `none` — события проходят ниже; `pass-through` — интерактивные children принимают события, пустые области пропускают события нижним слоям.
+- [ ] Разделить понятия: `layers` — постоянная композиция страницы; `overlays` — временные меню/модалки/панели/тултипы поверх приложения.
+
+### 14.2 Рендеринг
+- [ ] `LayerView` на фронте: абсолютное/нормальное позиционирование, z-index, opacity, pointer-events, responsive bounds.
+- [ ] `PageView` рендерит `layers`, а при их отсутствии — текущие `sections`.
+- [ ] Проверить взаимодействие слоёв с `OverlayHost`, `GestureListener`, drag/drop, Canvas2D, Diagram, Scene3D и keyboard shortcuts.
+
+### 14.3 Валидация и документация
+- [ ] Backend-модель и валидация структуры слоёв в конфигурации, отдаваемой через `/config`.
+- [ ] Документация сценариев: HUD поверх редактора, панель инструментов поверх canvas, полупрозрачная инфо-панель, split-layer страница.
+- [ ] Storybook/UIDocs сценарии для слоёв: базовый слой + прозрачный слой кнопок + слой подсказок.
+
+---
 
 ## Риски и решения
 

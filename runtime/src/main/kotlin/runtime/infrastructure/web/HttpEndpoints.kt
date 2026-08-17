@@ -1,5 +1,6 @@
 package runtime.infrastructure.web
 
+import java.io.File
 import java.util.concurrent.atomic.AtomicReference
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -11,6 +12,7 @@ import io.ktor.server.http.content.staticResources
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondBytes
+import io.ktor.server.response.respondFile
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import runtime.domain.models.HttpConfig
@@ -21,8 +23,11 @@ class HttpEndpoints(
     private val httpConfig: HttpConfig,
     workspaceConfiguration: WorkspaceConfiguration,
     private val pluginAssetsService: PluginAssetsService,
-    private val routingMode: String = "hash"
+    private val routingMode: String = "hash",
+    private val uidocsEnabled: Boolean = false,
+    uidocsRoot: String = "frontend/storybook-static"
 ) {
+    private val uidocsDirectory = File(uidocsRoot).canonicalFile
     private val configRef = AtomicReference(workspaceConfiguration)
 
     fun updateConfig(newConfig: WorkspaceConfiguration) {
@@ -69,12 +74,33 @@ class HttpEndpoints(
             get("/docs") {
                 call.serveIndex()
             }
+            get("/uidocs") {
+                call.serveUidocs("index.html")
+            }
+            get("/uidocs/{path...}") {
+                call.serveUidocs(call.parameters.getAll("path")?.joinToString("/") ?: "index.html")
+            }
             if (routingMode == "history") {
                 get("/{path...}") {
                     call.serveIndex()
                 }
             }
         }
+    }
+
+
+    private suspend fun io.ktor.server.application.ApplicationCall.serveUidocs(path: String) {
+        if (!uidocsEnabled) {
+            respond(HttpStatusCode.NotFound)
+            return
+        }
+        val normalized = path.trim('/').ifEmpty { "index.html" }
+        val file = File(uidocsDirectory, normalized).canonicalFile
+        if (!file.path.startsWith(uidocsDirectory.path) || !file.isFile) {
+            respond(HttpStatusCode.NotFound)
+            return
+        }
+        respondFile(file)
     }
 
     private suspend fun io.ktor.server.application.ApplicationCall.serveIndex() {
@@ -90,6 +116,10 @@ class HttpEndpoints(
         javaClass.classLoader
             .getResource("${httpConfig.staticRoot}/index.html")
             ?.readBytes()
+            ?: listOf(
+                File("frontend/dist/index.html"),
+                File("../frontend/dist/index.html")
+            ).firstOrNull { it.isFile }?.readBytes()
     }
 
     private fun contentTypeFor(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {

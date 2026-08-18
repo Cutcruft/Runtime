@@ -73,6 +73,7 @@ ui:
   subscriptionComponentType: EventSubscription
   overlayComponentType: Overlay
   overlayTriggerComponentType: OverlayTrigger
+  layerComponentType: Layer
   app:
     title: Runtime
     logo: null
@@ -87,6 +88,18 @@ ui:
   pageFields:
     id: id
     title: title
+    sections: sections
+    layers: layers
+  layerFields:
+    pageId: pageId
+    id: id
+    title: title
+    order: order
+    visible: visible
+    opacity: opacity
+    positionType: positionType
+    pointerEvents: pointerEvents
+    className: className
     sections: sections
   appFields:
     title: title

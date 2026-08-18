@@ -16,9 +16,12 @@ import runtime.domain.models.AppFields
 import runtime.domain.models.AppConfiguration
 import runtime.domain.models.CommandEntry
 import runtime.domain.models.ComponentDefinition
+import runtime.domain.models.LayerDefinition
+import runtime.domain.models.LayerPosition
 import runtime.domain.models.NavigationEntry
 import runtime.domain.models.NavigationFields
 import runtime.domain.models.PageDefinition
+import runtime.domain.models.LayerFields
 import runtime.domain.models.PageFields
 import runtime.domain.models.RedirectRule
 import runtime.domain.models.RegisteredUi
@@ -45,9 +48,11 @@ class WorkspaceConfigurationBuilderTest {
         subscriptionComponentType = "EventSubscription",
         overlayComponentType = "Overlay",
         overlayTriggerComponentType = "OverlayTrigger",
+        layerComponentType = "Layer",
         app = AppConfig(title = "Runtime", logo = null, layout = "topbar"),
         navigationFields = NavigationFields(id = "id", label = "label", pageId = "pageId", order = "order", group = "group", icon = "icon"),
-        pageFields = PageFields(id = "id", title = "title", sections = "sections"),
+        pageFields = PageFields(id = "id", title = "title", sections = "sections", layers = "layers"),
+        layerFields = LayerFields(pageId = "pageId", id = "id", title = "title", order = "order", visible = "visible", opacity = "opacity", positionType = "positionType", pointerEvents = "pointerEvents", className = "className", sections = "sections"),
         appFields = AppFields(title = "title", logo = "logo", layout = "layout"),
         theme = ThemeConfig(mode = "light", tokens = emptyMap())
     )
@@ -475,5 +480,145 @@ class WorkspaceConfigurationBuilderTest {
         )
         assertFalse(config.dev.enabled)
         assertEquals(0L, config.dev.pollIntervalMs)
+    }
+
+    @Test
+    fun `layers are built from plugin ui definitions and attached to pages`() {
+        val builder = WorkspaceConfigurationBuilder(uiConfig)
+
+        val page = ui(
+            "demo",
+            "Page",
+            mapOf(
+                "id" to "boards",
+                "title" to "Boards",
+                "sections" to listOf(
+                    mapOf(
+                        "id" to "main",
+                        "layout" to "stack",
+                        "columns" to 1,
+                        "components" to listOf(
+                            mapOf("type" to "Table", "config" to mapOf("entityType" to "demo.board"))
+                        )
+                    )
+                )
+            )
+        )
+        val toolbarLayer = ui(
+            "demo",
+            "Layer",
+            mapOf(
+                "pageId" to "boards",
+                "id" to "boards:toolbar",
+                "title" to "Toolbar",
+                "order" to 100,
+                "visible" to true,
+                "opacity" to 0.95,
+                "positionType" to "relative",
+                "pointerEvents" to "auto",
+                "className" to "toolbar-layer",
+                "sections" to listOf(
+                    mapOf(
+                        "id" to "toolbar-section",
+                        "layout" to "stack",
+                        "columns" to 1,
+                        "components" to listOf(
+                            mapOf("type" to "Button", "config" to mapOf("label" to "Save"))
+                        )
+                    )
+                )
+            )
+        )
+        val hudLayer = ui(
+            "demo",
+            "Layer",
+            mapOf(
+                "pageId" to "boards",
+                "id" to "boards:hud",
+                "title" to "HUD",
+                "order" to 200,
+                "visible" to false,
+                "opacity" to 0.85,
+                "positionType" to "absolute",
+                "pointerEvents" to "pass-through",
+                "sections" to listOf(
+                    mapOf(
+                        "id" to "hud-section",
+                        "layout" to "stack",
+                        "columns" to 1,
+                        "components" to listOf(
+                            mapOf("type" to "Text", "config" to mapOf("text" to "Status"))
+                        )
+                    )
+                )
+            )
+        )
+
+        val config = builder.build(
+            listOf(page, toolbarLayer, hudLayer),
+            InMemoryCommandRegistry(),
+            InMemoryEntityRegistry(),
+            loadedPluginIds = setOf(PluginId("demo"))
+        )
+
+        assertEquals(1, config.pages.size)
+        val builtPage = config.pages[0]
+        assertEquals("boards", builtPage.id)
+        assertEquals(2, builtPage.layers.size)
+
+        val tb = builtPage.layers.first { it.id == "boards:toolbar" }
+        assertEquals("Toolbar", tb.title)
+        assertEquals(100, tb.order)
+        assertTrue(tb.visible)
+        assertEquals(0.95, tb.opacity)
+        assertEquals("relative", tb.position.type)
+        assertEquals("auto", tb.pointerEvents)
+        assertEquals("toolbar-layer", tb.className)
+        assertEquals(1, tb.sections.size)
+        assertEquals("Button", tb.sections[0].components[0].type)
+
+        val hud = builtPage.layers.first { it.id == "boards:hud" }
+        assertEquals(200, hud.order)
+        assertFalse(hud.visible)
+        assertEquals(0.85, hud.opacity)
+        assertEquals("absolute", hud.position.type)
+        assertEquals("pass-through", hud.pointerEvents)
+    }
+
+    @Test
+    fun `layers for different pages are separated`() {
+        val builder = WorkspaceConfigurationBuilder(uiConfig)
+
+        val pageA = ui("demo", "Page", mapOf("id" to "page-a", "title" to "A"))
+        val pageB = ui("demo", "Page", mapOf("id" to "page-b", "title" to "B"))
+        val layerA = ui("demo", "Layer", mapOf("pageId" to "page-a", "id" to "page-a:overlay"))
+        val layerB = ui("demo", "Layer", mapOf("pageId" to "page-b", "id" to "page-b:overlay"))
+
+        val config = builder.build(
+            listOf(pageA, pageB, layerA, layerB),
+            InMemoryCommandRegistry(),
+            InMemoryEntityRegistry(),
+            loadedPluginIds = setOf(PluginId("demo"))
+        )
+
+        assertEquals(1, config.pages[0].layers.size)
+        assertEquals("page-a:overlay", config.pages[0].layers[0].id)
+        assertEquals(1, config.pages[1].layers.size)
+        assertEquals("page-b:overlay", config.pages[1].layers[0].id)
+    }
+
+    @Test
+    fun `page without layers has empty layers list`() {
+        val builder = WorkspaceConfigurationBuilder(uiConfig)
+        val page = ui("demo", "Page", mapOf("id" to "boards", "title" to "Boards"))
+
+        val config = builder.build(
+            listOf(page),
+            InMemoryCommandRegistry(),
+            InMemoryEntityRegistry(),
+            loadedPluginIds = setOf(PluginId("demo"))
+        )
+
+        assertTrue(config.pages[0].layers.isEmpty())
     }
 }

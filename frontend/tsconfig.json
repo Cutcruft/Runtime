@@ -14,8 +14,12 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@cutcrft/runtime-client": ["./src/plugin/runtimeClient.ts"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"],
+  "exclude": ["src/editors/**/*"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

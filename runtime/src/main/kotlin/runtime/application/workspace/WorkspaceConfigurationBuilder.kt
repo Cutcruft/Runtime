@@ -1,5 +1,6 @@
 package runtime.application.workspace
 
+import java.util.logging.Logger
 import runtime.application.i18n.MessageRegistry
 import runtime.domain.models.AppConfiguration
 import runtime.domain.models.ComponentDefinition
@@ -13,8 +14,11 @@ import runtime.domain.models.MenuItemEntry
 import runtime.domain.models.NavigationEntry
 import runtime.domain.models.OverlayEntry
 import runtime.domain.models.OverlayTriggerEntry
+import runtime.domain.models.LayerDefinition
+import runtime.domain.models.LayerPosition
 import runtime.domain.models.PageDefinition
 import runtime.domain.models.ProtocolDocsConfiguration
+import runtime.domain.models.PluginComponentEntry
 import runtime.domain.models.RegisteredUi
 import runtime.domain.models.RedirectRuleConfiguration
 import runtime.domain.models.RoutingConfiguration
@@ -25,6 +29,7 @@ import runtime.domain.models.TransportConfig
 import runtime.domain.models.UiConfig
 import runtime.domain.models.WorkspaceConfiguration
 import runtime.domain.command.PipelineCommand
+import runtime.domain.plugin.FrontendComponentDefinition
 import runtime.domain.plugin.PluginId
 import runtime.domain.plugin.UIDefinition
 import runtime.domain.repositories.CommandRegistry
@@ -41,11 +46,23 @@ class WorkspaceConfigurationBuilder(
     private val collaborationEnabled: Boolean = false,
     private val collaborationCursorsEnabled: Boolean = false
 ) {
+    companion object {
+        private val logger = Logger.getLogger(WorkspaceConfigurationBuilder::class.java.name)
+        private const val DEFAULT_SECTION_LAYOUT = "stack"
+
+        /** Builtin component types always available without plugin registration. */
+        private val BUILTIN_COMPONENT_TYPES = setOf(
+            "Stat", "Card", "Table", "Form", "Button", "Badge", "Text",
+            "Tabs", "Space", "Grid", "Column", "List", "Avatar",
+            "Progress", "Accordion", "Image", "Frame"
+        )
+    }
     fun build(
         uiDefinitions: List<RegisteredUi>,
         commandRegistry: CommandRegistry,
         entityRegistry: EntityRegistry,
-        loadedPluginIds: Set<PluginId>
+        loadedPluginIds: Set<PluginId>,
+        frontendComponents: List<Pair<PluginId, FrontendComponentDefinition>> = emptyList()
     ): WorkspaceConfiguration {
         validatePluginOrder(loadedPluginIds)
 
@@ -62,7 +79,7 @@ class WorkspaceConfigurationBuilder(
         val navigation = buildNavigation(resolvedUi)
         val pages = buildPages(resolvedUi)
         val app = buildApp(resolvedUi, navigation, pages)
-        return WorkspaceConfiguration(
+        val result = WorkspaceConfiguration(
             app = app,
             navigation = navigation,
             pages = pages,
@@ -89,6 +106,7 @@ class WorkspaceConfigurationBuilder(
             entities = entityRegistry.list().sortedBy { it.value }.map { EntityEntry(type = it.value) },
             overlays = buildOverlays(resolvedUi),
             overlayTriggers = buildOverlayTriggers(resolvedUi),
+            pluginComponents = buildPluginComponents(frontendComponents),
             i18n = buildI18n(),
             transport = TransportConfig(wsPath = wsPath),
             routing = RoutingConfiguration(
@@ -105,6 +123,9 @@ class WorkspaceConfigurationBuilder(
                 cursorsEnabled = collaborationCursorsEnabled
             )
         )
+
+        validateComponentTypes(result, frontendComponents)
+        return result
     }
 
     private fun resolveAssetUrls(config: Map<String, Any>, pluginId: String): Map<String, Any> {
@@ -208,6 +229,23 @@ class WorkspaceConfigurationBuilder(
             }
     }
 
+    private fun buildPluginComponents(
+        frontendComponents: List<Pair<PluginId, FrontendComponentDefinition>>
+    ): List<PluginComponentEntry> {
+        return frontendComponents.map { (pluginId, fc) ->
+            PluginComponentEntry(
+                type = fc.type,
+                pluginId = pluginId.value,
+                name = fc.name,
+                version = fc.version,
+                bundleUrl = "/plugin-assets/${pluginId.value}/${fc.bundlePath}",
+                cssUrl = fc.cssPath?.let { "/plugin-assets/${pluginId.value}/$it" },
+                schema = fc.schema,
+                capabilities = fc.capabilities
+            )
+        }
+    }
+
     @Suppress("UNCHECKED_CAST")
     private fun buildComponent(raw: Any?): ComponentDefinition? {
         val map = raw as? Map<*, *> ?: return null
@@ -251,6 +289,43 @@ class WorkspaceConfigurationBuilder(
         }
     }
 
+    /**
+     * Validate that all component types used in page sections are either builtin
+     * or registered as plugin-provided frontend components. Logs warnings for
+     * unknown types — does not fail build since unknown types may be provided
+     * by plugins loaded later or handled at runtime.
+     */
+    private fun validateComponentTypes(
+        config: WorkspaceConfiguration,
+        frontendComponents: List<Pair<PluginId, FrontendComponentDefinition>>
+    ) {
+        val knownTypes = BUILTIN_COMPONENT_TYPES.toMutableSet()
+        // Add registered plugin component types (lowercase for case-insensitive match)
+        for ((_, fc) in frontendComponents) {
+            knownTypes.add(fc.type.lowercase())
+        }
+
+        val unknownTypes = mutableSetOf<String>()
+        for (page in config.pages) {
+            for (section in page.sections) {
+                for (component in section.components) {
+                    val typeKey = component.type.lowercase()
+                    if (typeKey !in knownTypes) {
+                        unknownTypes.add(component.type)
+                    }
+                }
+            }
+        }
+
+        if (unknownTypes.isNotEmpty()) {
+            logger.warning(
+                "Component types used in page configs but not registered as builtin or plugin-provided: " +
+                    unknownTypes.sorted().joinToString { "\"$it\"" } +
+                    ". These may fail to render if no matching component or editor is loaded."
+            )
+        }
+    }
+
     private fun buildNavigation(uiDefinitions: List<RegisteredUi>): List<NavigationEntry> {
         val include = uiConfig.navInclude
         val exclude = uiConfig.navExclude
@@ -283,14 +358,45 @@ class WorkspaceConfigurationBuilder(
     }
 
     private fun buildPages(uiDefinitions: List<RegisteredUi>): List<PageDefinition> {
+        val allLayers = buildLayers(uiDefinitions)
         return uiDefinitions
             .filter { it.definition.componentType.equals(uiConfig.pageComponentType, ignoreCase = true) }
             .map { reg ->
                 val fields = uiConfig.pageFields
+                val pageId = reg.definition.config[fields.id] as String
                 PageDefinition(
-                    id = reg.definition.config[fields.id] as String,
+                    id = pageId,
                     title = reg.definition.config[fields.title] as String,
-                    sections = buildSections(reg.definition.config[fields.sections])
+                    sections = buildSections(reg.definition.config[fields.sections]),
+                    layers = allLayers.filter { it.id.startsWith("$pageId:") }
+                )
+            }
+    }
+
+    private fun buildLayers(uiDefinitions: List<RegisteredUi>): List<LayerDefinition> {
+        return uiDefinitions
+            .filter { it.definition.componentType.equals(uiConfig.layerComponentType, ignoreCase = true) }
+            .map { reg ->
+                val config = reg.definition.config
+                val fields = uiConfig.layerFields
+                LayerDefinition(
+                    id = config[fields.id] as? String ?: "${reg.pluginId.value}-layer",
+                    title = config[fields.title] as? String ?: "",
+                    order = (config[fields.order] as? Number)?.toInt() ?: 0,
+                    visible = config[fields.visible] as? Boolean ?: true,
+                    opacity = (config[fields.opacity] as? Number)?.toDouble() ?: 1.0,
+                    position = LayerPosition(
+                        type = config[fields.positionType] as? String ?: "relative",
+                        top = config["top"] as? String,
+                        left = config["left"] as? String,
+                        right = config["right"] as? String,
+                        bottom = config["bottom"] as? String,
+                        width = config["width"] as? String,
+                        height = config["height"] as? String
+                    ),
+                    pointerEvents = config[fields.pointerEvents] as? String ?: "auto",
+                    className = config[fields.className] as? String ?: "",
+                    sections = buildSections(config[fields.sections])
                 )
             }
     }
@@ -349,7 +455,4 @@ class WorkspaceConfigurationBuilder(
         )
     }
 
-    companion object {
-        const val DEFAULT_SECTION_LAYOUT = "stack"
-    }
 }

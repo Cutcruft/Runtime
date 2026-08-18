@@ -1,4 +1,3 @@
-import { registerBuiltinComponents } from '../renderer/componentRegistry'
 import { configToUiDocsCatalog } from './configAdapter'
 import type { WorkspaceConfig } from '../protocol/types'
 import type { ThemeMode } from '../store/theme'
@@ -63,6 +62,7 @@ const runtimeConfig: WorkspaceConfig = {
   entities: [],
   overlays: [],
   overlayTriggers: [],
+  pluginComponents: [],
   i18n: { defaultLocale: 'en', locales: ['en'], messages: { en: {} } },
   transport: { wsPath: '/ws' },
   routing: { mode: 'hash', redirects: [] },
@@ -72,7 +72,6 @@ const runtimeConfig: WorkspaceConfig = {
 }
 
 const catalog = configToUiDocsCatalog(runtimeConfig)
-let registered = false
 
 function effectiveMode(mode: unknown): 'light' | 'dark' {
   if (mode === 'dark') return 'dark'
@@ -81,10 +80,6 @@ function effectiveMode(mode: unknown): 'light' | 'dark' {
 }
 
 export function applyStorybookRuntime(mode: unknown = runtimeConfig.app.theme.mode): void {
-  if (!registered) {
-    registerBuiltinComponents()
-    registered = true
-  }
   const current = effectiveMode(mode as ThemeMode)
   const root = document.documentElement
   root.dataset.theme = current

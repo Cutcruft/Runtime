@@ -3,6 +3,7 @@ package runtime.application.session
 import java.util.UUID
 import runtime.application.command.CommandExecutor
 import runtime.application.event.EventPublisher
+import runtime.application.layer.LayerCommandIds
 import runtime.application.project.ProjectService
 import runtime.application.project.commands.ProjectCommandIds
 import runtime.domain.command.CommandResult
@@ -76,6 +77,9 @@ class CommandDispatchService(
                 }
                 val result = commandExecutor.execute(project, outcome.commandId, outcome.params, sessionId)
                 sessionManager.rebindIfChanged(sessionId)
+                if (outcome.commandId.startsWith("layer.")) {
+                    broadcastLayerEvent(project, outcome.commandId, outcome.params, result)
+                }
                 DispatchResult.Result(result)
             }
             is Outcome.ProtocolError -> DispatchResult.Protocol(outcome.message)
@@ -109,5 +113,29 @@ class CommandDispatchService(
 
     fun getSessionsForProject(projectId: ProjectId): List<Session> {
         return sessionManager.sessionsForProject(projectId)
+    }
+
+    private suspend fun broadcastLayerEvent(
+        project: Project,
+        commandId: String,
+        params: Any?,
+        result: CommandResult
+    ) {
+        val publisher = eventPublisher ?: return
+        val map = params as? Map<*, *> ?: emptyMap<String, Any>()
+        val pageId = map["pageId"] as? String ?: return
+        val layerId = map["layerId"] as? String ?: return
+        val visible = (result.value as? Map<*, *>)?.get("visible") as? Boolean ?: return
+        publisher.publish(
+            RuntimeEvent.ProjectEvent(
+                projectId = project.id,
+                type = "layer.visibility",
+                payload = mapOf(
+                    "pageId" to pageId,
+                    "layerId" to layerId,
+                    "visible" to visible
+                )
+            )
+        )
     }
 }

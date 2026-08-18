@@ -4,6 +4,7 @@ import runtime.domain.command.Command
 import runtime.domain.connector.DataSink
 import runtime.domain.connector.DataSource
 import runtime.domain.entity.EntityDefinition
+import runtime.domain.plugin.FrontendComponentDefinition
 import runtime.domain.plugin.PluginContext
 import runtime.domain.plugin.PluginId
 import runtime.domain.plugin.UIDefinition
@@ -16,7 +17,8 @@ class PluginContextImpl(
     private val entityRegistry: EntityRegistry,
     private val commandRegistry: CommandRegistry,
     private val infrastructureRegistry: InfrastructureRegistry,
-    private val onUiRegistered: (UIDefinition) -> Unit
+    private val onUiRegistered: (UIDefinition) -> Unit,
+    private val onFrontendComponentRegistered: (FrontendComponentDefinition) -> Unit = {}
 ) : PluginContext {
 
     override fun registerEntity(definition: EntityDefinition) {
@@ -29,6 +31,10 @@ class PluginContextImpl(
 
     override fun registerUi(ui: UIDefinition) {
         onUiRegistered(ui)
+    }
+
+    override fun registerFrontendComponent(definition: FrontendComponentDefinition) {
+        onFrontendComponentRegistered(definition)
     }
 
     override fun registerDataSource(source: DataSource) {

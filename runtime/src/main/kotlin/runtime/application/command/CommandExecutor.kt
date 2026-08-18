@@ -236,8 +236,9 @@ class CommandExecutor(
             if (value.containsKey(key)) return value[key]
             return null
         }
-        val getter = runCatching { value.javaClass.getMethod("get${key.capitalize()}") }.getOrNull()
-            ?: runCatching { value.javaClass.getMethod("is${key.capitalize()}") }.getOrNull()
+        val capitalized = key.replaceFirstChar { it.titlecase() }
+        val getter = runCatching { value.javaClass.getMethod("get$capitalized") }.getOrNull()
+            ?: runCatching { value.javaClass.getMethod("is$capitalized") }.getOrNull()
         return getter?.invoke(value)
     }
 

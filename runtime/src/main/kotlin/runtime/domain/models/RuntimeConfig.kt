@@ -93,9 +93,11 @@ data class UiConfig(
     val subscriptionComponentType: String,
     val overlayComponentType: String,
     val overlayTriggerComponentType: String,
+    val layerComponentType: String,
     val app: AppConfig,
     val navigationFields: NavigationFields,
     val pageFields: PageFields,
+    val layerFields: LayerFields,
     val appFields: AppFields,
     val theme: ThemeConfig
 )
@@ -118,6 +120,20 @@ data class NavigationFields(
 data class PageFields(
     val id: String,
     val title: String,
+    val sections: String,
+    val layers: String
+)
+
+data class LayerFields(
+    val pageId: String,
+    val id: String,
+    val title: String,
+    val order: String,
+    val visible: String,
+    val opacity: String,
+    val positionType: String,
+    val pointerEvents: String,
+    val className: String,
     val sections: String
 )
 

@@ -48,7 +48,8 @@ class PluginAssetsService(
         val ALLOWED_EXTENSIONS = setOf(
             "gltf", "glb", "bin", "json",
             "png", "jpg", "jpeg", "webp", "svg", "gif",
-            "ktx2", "hdr", "tga"
+            "ktx2", "hdr", "tga",
+            "js", "mjs", "css", "map", "woff", "woff2", "ttf", "eot"
         )
     }
 }

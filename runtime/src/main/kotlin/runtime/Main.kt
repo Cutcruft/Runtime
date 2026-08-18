@@ -1,6 +1,7 @@
 package runtime
 
 import java.util.concurrent.Executors
+import java.util.logging.Logger
 import io.ktor.websocket.DefaultWebSocketSession
 import kotlin.system.exitProcess
 import kotlinx.coroutines.Dispatchers
@@ -9,8 +10,12 @@ import runtime.application.audit.AuditService
 import runtime.application.command.CommandExecutor
 import runtime.application.command.ProjectLocks
 import runtime.application.i18n.MessageRegistry
-import runtime.application.plugin.DependencyResolver
-import runtime.application.plugin.PluginManager
+import runtime.application.layer.LayerCommandIds
+import runtime.application.layer.LayerService
+import runtime.application.layer.LayerShowCommand
+import runtime.application.layer.LayerHideCommand
+import runtime.application.layer.LayerToggleCommand
+import runtime.application.plugin.PluginBootstrap
 import runtime.application.project.ProjectFactory
 import runtime.application.project.ProjectSerializer
 import runtime.application.project.ProjectService
@@ -25,16 +30,12 @@ import runtime.application.session.SessionManager
 import runtime.application.workspace.WorkspaceConfigurationBuilder
 import runtime.domain.entity.EntityType
 import runtime.domain.models.Messages
-import runtime.domain.models.RegisteredUi
 import runtime.domain.models.WorkspaceConfiguration
-import runtime.domain.plugin.Plugin
-import runtime.domain.plugin.PluginId
 import runtime.domain.repositories.CommandRegistry
 import runtime.domain.repositories.SessionRepository
 import runtime.infrastructure.configuration.ConfigLoader
 import runtime.infrastructure.dev.PluginWatcher
 import runtime.infrastructure.dev.RuntimeReloader
-import runtime.infrastructure.i18n.MessageCatalogLoader
 import runtime.infrastructure.inmem.InMemoryAuditLog
 import runtime.infrastructure.inmem.InMemoryCommandRegistry
 import runtime.infrastructure.inmem.InMemoryEntityRegistry
@@ -43,16 +44,13 @@ import runtime.infrastructure.inmem.InMemoryProjectRepository
 import runtime.infrastructure.inmem.InMemorySessionRepository
 import runtime.infrastructure.infrastructure.InfrastructureClientImpl
 import runtime.infrastructure.infrastructure.InfrastructureService
-import runtime.infrastructure.plugin.PluginClassLoader
-import runtime.infrastructure.plugin.PluginContextImpl
-import runtime.infrastructure.plugin.PluginDescriptorLoader
-import runtime.infrastructure.plugin.PluginLoader
 import runtime.infrastructure.plugin.PluginAssetsService
-import runtime.infrastructure.script.KotlinScriptEngine
 import runtime.infrastructure.storage.StorageFactory
 import runtime.infrastructure.web.WebServer
 import runtime.infrastructure.ws.PresenceManager
 import runtime.infrastructure.ws.WsEventPublisher
+
+private val logger = Logger.getLogger("Runtime")
 
 fun main(args: Array<String>) {
     try {
@@ -81,8 +79,6 @@ fun main(args: Array<String>) {
         val dispatcher = config.command.executorThreads?.let { threads ->
             Executors.newFixedThreadPool(threads).asCoroutineDispatcher()
         } ?: Dispatchers.Default
-        // Cap command concurrency at the pool size so in-flight commands never
-        // exceed the number of executor threads (no unbounded queuing).
         val poolSize = config.command.executorThreads ?: Runtime.getRuntime().availableProcessors()
         val maxConcurrency = (config.command.maxConcurrency ?: poolSize).coerceAtMost(poolSize)
 
@@ -92,79 +88,33 @@ fun main(args: Array<String>) {
         val eventPublisher = WsEventPublisher(sessionManager, activeSessions, presenceManager, config.collaboration.enabled)
         val infrastructureService = InfrastructureService(infrastructureRegistry, InfrastructureClientImpl())
 
-        val uiDefinitions = mutableListOf<RegisteredUi>()
-        val pluginLoader = PluginLoader(
-            config.plugins.directories,
-            PluginDescriptorLoader(config.plugins.configFileName, config.plugins.apiVersion)
-        )
-        val descriptors = pluginLoader.discover()
+        // Plugin bootstrap (shared with RuntimeReloader)
+        val bootstrap = PluginBootstrap(config, entityRegistry, commandRegistry, infrastructureRegistry, messages)
+        val bootstrapResult = bootstrap.bootstrap()
 
-        val pluginManager = PluginManager(
-            resolver = DependencyResolver(),
-            instantiate = { descriptor ->
-                val clazz = pluginLoader.loadClass(descriptor, PluginClassLoader::class.java.classLoader)
-                clazz.getDeclaredConstructor().newInstance() as Plugin
-            },
-            createContext = { pluginId ->
-                PluginContextImpl(pluginId, entityRegistry, commandRegistry, infrastructureRegistry) { ui ->
-                    uiDefinitions += RegisteredUi(pluginId = pluginId, definition = ui)
-                }
-            },
-            messages = messages
-        )
-        val loadedPluginIds = pluginManager.bootstrap(descriptors).toSet()
-
-        // Build the script engine after bootstrap so plugin class loaders exist; scripts
-        // must resolve plugin model classes through the plugin's own loader for identity.
-        val scriptEngine = KotlinScriptEngine(
-            pluginJars = descriptors.mapNotNull { descriptor ->
-                runCatching { java.io.File(descriptor.jarPath) }.getOrNull()
-            },
-            pluginLoaders = pluginLoader.loadedClassLoaders()
-        )
         val commandExecutor = CommandExecutor(
             commandRegistry, auditService, projectLocks, messages, eventPublisher, dispatcher,
             maxConcurrency = maxConcurrency,
             queueWaitMs = config.command.queueWaitMs ?: 5_000,
             timeoutMs = config.command.timeoutMs,
             infrastructure = infrastructureService,
-            scriptEngine = scriptEngine
+            scriptEngine = bootstrapResult.scriptEngine
         )
         val dispatchService = CommandDispatchService(projectService, commandExecutor, sessionManager, messages, eventPublisher)
 
         registerBuiltInCommands(commandRegistry, projectService, messages)
-
-        val messageRegistry = MessageRegistry(config.i18n.defaultLocale)
-        val messageCatalogLoader = MessageCatalogLoader()
-        val coreCatalogs = messageCatalogLoader.loadFromClasspathAll("core")
-        val allowedLocales = config.i18n.locales.ifEmpty { coreCatalogs.keys.sorted() }
-        allowedLocales.forEach { locale ->
-            val entries = coreCatalogs[locale]
-                ?: throw IllegalStateException(
-                    "Core message catalog for locale '$locale' is missing (expected messages/$locale.json on the classpath)"
-                )
-            messageRegistry.register(locale, entries)
-        }
-        if (config.i18n.defaultLocale !in messageRegistry.locales()) {
-            throw IllegalStateException(
-                "Default locale '${config.i18n.defaultLocale}' has no core message catalog"
-            )
-        }
-        descriptors.forEach { descriptor ->
-            messageCatalogLoader
-                .loadFromJar(descriptor.id.value, descriptor.jarPath)
-                .forEach { (locale, entries) -> messageRegistry.register(locale, entries) }
-        }
+        val layerService = LayerService()
+        registerLayerCommands(commandRegistry, layerService)
 
         val workspaceConfiguration: WorkspaceConfiguration =
             WorkspaceConfigurationBuilder(
-                config.ui, config.ws.path, messageRegistry, config.routing,
+                config.ui, config.ws.path, bootstrapResult.messageRegistry, config.routing,
                 devEnabled = config.dev.enabled,
                 devPollIntervalMs = if (config.dev.enabled) config.dev.watchIntervalMs else 0,
                 collaborationEnabled = config.collaboration.enabled,
                 collaborationCursorsEnabled = config.collaboration.cursorsEnabled
             )
-                .build(uiDefinitions, commandRegistry, entityRegistry, loadedPluginIds)
+                .build(bootstrapResult.uiDefinitions, commandRegistry, entityRegistry, bootstrapResult.loadedPluginIds, bootstrapResult.frontendComponents)
 
         val webServer = WebServer(
             config = config,
@@ -173,13 +123,13 @@ fun main(args: Array<String>) {
             workspaceConfiguration = workspaceConfiguration,
             activeSessions = activeSessions,
             messages = messages,
-            pluginAssetsService = PluginAssetsService(descriptors),
+            pluginAssetsService = PluginAssetsService(bootstrapResult.descriptors),
             presenceManager = presenceManager,
             eventPublisher = eventPublisher
         )
         webServer.start()
 
-        println("Runtime started on http://${config.server.host}:${config.server.port}")
+        logger.info("Runtime started on http://${config.server.host}:${config.server.port}")
 
         // Dev-mode: start plugin watcher for hot-reload
         if (config.dev.enabled) {
@@ -190,7 +140,7 @@ fun main(args: Array<String>) {
                 commandRegistry = commandRegistry,
                 infrastructureRegistry = infrastructureRegistry,
                 httpEndpoints = webServer.httpEndpoints,
-                pluginAssetsService = PluginAssetsService(descriptors),
+                pluginAssetsService = PluginAssetsService(bootstrapResult.descriptors),
                 activeSessions = activeSessions,
                 sessionRepository = sessionRepository,
                 messages = messages
@@ -202,23 +152,23 @@ fun main(args: Array<String>) {
                 onChange = { reloader.reload() }
             )
             watcher.start()
-            println("Dev-mode: watching plugins in $watchPaths for changes")
+            logger.info("Dev-mode: watching plugins in $watchPaths for changes")
 
             java.lang.Runtime.getRuntime().addShutdownHook(Thread {
                 watcher.stop()
                 entityStore.closeAll()
-                println("Shutting down Runtime...")
+                logger.info("Shutting down Runtime...")
             })
         } else {
             java.lang.Runtime.getRuntime().addShutdownHook(Thread {
                 entityStore.closeAll()
-                println("Shutting down Runtime...")
+                logger.info("Shutting down Runtime...")
             })
         }
 
         Thread.currentThread().join()
     } catch (e: Exception) {
-        System.err.println("Failed to start Runtime: ${e.message}")
+        logger.severe("Failed to start Runtime: ${e.message}")
         e.printStackTrace()
         exitProcess(1)
     }
@@ -241,4 +191,14 @@ private fun registerBuiltInCommands(
     commandRegistry.register(pluginId, ProjectListCommand(projectService, messages))
     commandRegistry.register(pluginId, ProjectSaveCommand(projectService, messages))
     commandRegistry.register(pluginId, ProjectLoadCommand(projectService, messages))
+}
+
+private fun registerLayerCommands(
+    commandRegistry: CommandRegistry,
+    layerService: LayerService
+) {
+    val pluginId = PluginId(LayerCommandIds.PLUGIN)
+    commandRegistry.register(pluginId, LayerShowCommand(layerService))
+    commandRegistry.register(pluginId, LayerHideCommand(layerService))
+    commandRegistry.register(pluginId, LayerToggleCommand(layerService))
 }

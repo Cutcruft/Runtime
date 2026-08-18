@@ -12,6 +12,8 @@ interface PluginContext {
 
     fun registerUi(ui: UIDefinition)
 
+    fun registerFrontendComponent(definition: FrontendComponentDefinition)
+
     fun registerDataSource(source: DataSource)
 
     fun registerDataSink(sink: DataSink)

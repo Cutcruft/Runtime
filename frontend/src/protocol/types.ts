@@ -37,6 +37,30 @@ export interface PageDefinition {
   id: string
   title: string
   sections: SectionDefinition[]
+  layers?: LayerDefinition[]
+}
+
+export interface LayerDefinition {
+  id: string
+  title?: string
+  order: number
+  visible?: boolean
+  opacity?: number
+  position?: LayerPosition
+  pointerEvents?: 'auto' | 'none' | 'pass-through'
+  className?: string
+  style?: Record<string, string>
+  sections: SectionDefinition[]
+}
+
+export interface LayerPosition {
+  type?: 'relative' | 'absolute' | 'fixed'
+  top?: string
+  left?: string
+  right?: string
+  bottom?: string
+  width?: string
+  height?: string
 }
 
 export type ShortcutScope = 'global' | 'page' | 'component'
@@ -120,6 +144,17 @@ export interface OverlayTriggerEntry {
   anchor?: string
 }
 
+export interface PluginComponentEntry {
+  type: string
+  pluginId: string
+  name: string
+  version: string
+  bundleUrl: string
+  cssUrl?: string
+  schema?: Record<string, unknown>
+  capabilities?: string[]
+}
+
 export interface TransportConfig {
   wsPath: string
 }
@@ -167,6 +202,7 @@ export interface WorkspaceConfig {
   entities: EntityEntry[]
   overlays: OverlayEntry[]
   overlayTriggers: OverlayTriggerEntry[]
+  pluginComponents: PluginComponentEntry[]
   i18n: I18nConfiguration
   transport: TransportConfig
   routing: RoutingConfig
@@ -180,21 +216,4 @@ export interface CollaborationConfig {
   cursorsEnabled: boolean
 }
 
-export interface TableColumnsConfig {
-  key: string
-  label?: string
-}
 
-export interface FormFieldOptions {
-  command: string
-  valueKey: string
-  labelKey: string
-}
-
-export interface FormFieldConfig {
-  name: string
-  label?: string
-  type: 'text' | 'select' | 'number'
-  options?: FormFieldOptions
-  placeholder?: string
-}

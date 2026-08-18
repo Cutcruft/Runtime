@@ -39,6 +39,9 @@ export const configStore = {
   get overlayTriggers() {
     return config.value?.overlayTriggers ?? []
   },
+  get pluginComponents() {
+    return config.value?.pluginComponents ?? []
+  },
   get transport() {
     return config.value?.transport
   },

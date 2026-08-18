@@ -125,6 +125,12 @@ class HttpEndpoints(
     private fun contentTypeFor(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
         "gltf", "json" -> "application/json"
         "glb" -> "model/gltf-binary"
+        "js", "mjs" -> "application/javascript"
+        "css" -> "text/css"
+        "woff" -> "font/woff"
+        "woff2" -> "font/woff2"
+        "ttf" -> "font/ttf"
+        "eot" -> "application/vnd.ms-fontobject"
         "png" -> "image/png"
         "jpg", "jpeg" -> "image/jpeg"
         "webp" -> "image/webp"
@@ -132,6 +138,7 @@ class HttpEndpoints(
         "gif" -> "image/gif"
         "ktx2" -> "image/ktx2"
         "hdr" -> "image/vnd.radiance"
+        "map" -> "application/json"
         else -> "application/octet-stream"
     }
 }

@@ -4,6 +4,7 @@ import { WS_MESSAGE_TYPES, type CommandResultPayload, type WsEnvelope } from '..
 import { emitEvent } from '../events/eventBus'
 import { configStore } from './config'
 import { dataStore } from './data'
+import { layerStore } from './layer'
 import { presenceStore } from './presence'
 import { cursorStore } from './cursors'
 import { toasts } from './toasts'
@@ -126,6 +127,13 @@ function handleIncoming(envelope: WsEnvelope): void {
       const payload = envelope.payload
       const pid = payload.projectId
       if (typeof pid === 'string') projectId.value = pid
+      if (payload.type === 'layer.visibility') {
+        layerStore.handleLayerEvent({
+          pageId: payload.pageId as string,
+          layerId: payload.layerId as string,
+          visible: payload.visible as boolean
+        })
+      }
       emitEvent({ kind: WS_MESSAGE_TYPES.PROJECT_EVENT, payload })
       break
     }

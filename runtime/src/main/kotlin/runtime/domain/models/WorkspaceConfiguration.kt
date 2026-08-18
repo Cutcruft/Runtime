@@ -13,6 +13,7 @@ data class WorkspaceConfiguration(
     val entities: List<EntityEntry>,
     val overlays: List<OverlayEntry>,
     val overlayTriggers: List<OverlayTriggerEntry>,
+    val pluginComponents: List<PluginComponentEntry> = emptyList(),
     val i18n: I18nConfiguration,
     val transport: TransportConfig,
     val routing: RoutingConfiguration,
@@ -70,7 +71,32 @@ data class NavigationEntry(
 data class PageDefinition(
     val id: String,
     val title: String,
-    val sections: List<SectionDefinition>
+    val sections: List<SectionDefinition> = emptyList(),
+    val layers: List<LayerDefinition> = emptyList()
+)
+
+/** A compositing layer within a page — multiple layers stack by [order] with opacity and pointer-event control. */
+data class LayerDefinition(
+    val id: String,
+    val title: String = "",
+    val order: Int = 0,
+    val visible: Boolean = true,
+    val opacity: Double = 1.0,
+    val position: LayerPosition = LayerPosition(),
+    val pointerEvents: String = "auto",
+    val className: String = "",
+    val style: Map<String, String> = emptyMap(),
+    val sections: List<SectionDefinition> = emptyList()
+)
+
+data class LayerPosition(
+    val type: String = "relative",
+    val top: String? = null,
+    val left: String? = null,
+    val right: String? = null,
+    val bottom: String? = null,
+    val width: String? = null,
+    val height: String? = null
 )
 
 data class SectionDefinition(
@@ -193,4 +219,16 @@ data class TransportConfig(
 data class RegisteredUi(
     val pluginId: PluginId,
     val definition: UIDefinition
+)
+
+/** A frontend Vue component provided by a plugin, served from its JAR. */
+data class PluginComponentEntry(
+    val type: String,
+    val pluginId: String,
+    val name: String,
+    val version: String,
+    val bundleUrl: String,
+    val cssUrl: String? = null,
+    val schema: Map<String, Any>? = null,
+    val capabilities: List<String> = emptyList()
 )

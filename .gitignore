@@ -13,6 +13,10 @@
 # Maven build output
 target/
 
+# Plugin build artifacts
+plugins/*/target/
+plugins/*/*.jar
+
 # Frontend
 frontend/node_modules/
 frontend/dist/

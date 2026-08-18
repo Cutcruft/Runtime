@@ -11,6 +11,7 @@ import runtime.domain.models.DevConfig
 import runtime.domain.models.HttpConfig
 import runtime.domain.models.I18nConfig
 import runtime.domain.models.NavigationFields
+import runtime.domain.models.LayerFields
 import runtime.domain.models.PageFields
 import runtime.domain.models.PluginsConfig
 import runtime.domain.models.RedirectRule
@@ -123,6 +124,7 @@ class ConfigLoader(
                 subscriptionComponentType = ui["subscriptionComponentType"] as String,
                 overlayComponentType = ui["overlayComponentType"] as String,
                 overlayTriggerComponentType = ui["overlayTriggerComponentType"] as String,
+                layerComponentType = ui["layerComponentType"] as? String ?: "Layer",
                 app = AppConfig(
                     title = section(ui, "app")["title"] as String,
                     logo = section(ui, "app")["logo"] as? String,
@@ -139,7 +141,20 @@ class ConfigLoader(
                 pageFields = PageFields(
                     id = section(ui, "pageFields")["id"] as String,
                     title = section(ui, "pageFields")["title"] as String,
-                    sections = section(ui, "pageFields")["sections"] as String
+                    sections = section(ui, "pageFields")["sections"] as String,
+                    layers = section(ui, "pageFields")["layers"] as? String ?: "layers"
+                ),
+                layerFields = LayerFields(
+                    pageId = section(ui, "layerFields")["pageId"] as? String ?: "pageId",
+                    id = section(ui, "layerFields")["id"] as? String ?: "id",
+                    title = section(ui, "layerFields")["title"] as? String ?: "title",
+                    order = section(ui, "layerFields")["order"] as? String ?: "order",
+                    visible = section(ui, "layerFields")["visible"] as? String ?: "visible",
+                    opacity = section(ui, "layerFields")["opacity"] as? String ?: "opacity",
+                    positionType = section(ui, "layerFields")["positionType"] as? String ?: "positionType",
+                    pointerEvents = section(ui, "layerFields")["pointerEvents"] as? String ?: "pointerEvents",
+                    className = section(ui, "layerFields")["className"] as? String ?: "className",
+                    sections = section(ui, "layerFields")["sections"] as? String ?: "sections"
                 ),
                 appFields = AppFields(
                     title = section(ui, "appFields")["title"] as String,

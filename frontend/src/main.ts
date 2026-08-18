@@ -5,26 +5,17 @@ import './styles/global.css'
 import { configStore } from './store/config'
 import { i18nStore } from './store/i18n'
 import { sessionStore } from './store/session'
-import { registerBuiltinComponents } from './renderer/componentRegistry'
 import { emitShortcutAction, initShortcuts, registerShortcut } from './events/ShortcutService'
 import { initSubscriptionEngine } from './events/SubscriptionEngine'
 import { subscribeEvent } from './events/eventBus'
 import { overlayService } from './overlay/overlayService'
 import { initGestureListener } from './events/GestureListener'
-import { registerEditor } from './editor/editorRegistry'
+import { loadPluginComponents } from './plugin/pluginLoader'
 import { pageStore } from './store/page'
 import { routerStore } from './store/router'
 import type { RuntimeEvent } from './protocol/envelope'
 
 const isDocs = location.pathname === '/docs'
-
-registerBuiltinComponents()
-if (!isDocs) {
-  registerEditor('richtext', () => import('./editor/UiRichText.vue'))
-  registerEditor('diagram', () => import('./editor/UiDiagram.vue'))
-  registerEditor('scene3d', () => import('./editor/UiScene3D.vue'))
-  registerEditor('canvas2d', () => import('./editor/UiCanvas.vue'))
-}
 
 function routeActionEvents(event: RuntimeEvent): void {
   if (event.kind === 'navigation.request') {
@@ -58,6 +49,9 @@ async function bootstrap(): Promise<void> {
   createApp(App).mount('#app')
 
   if (!configStore.loaded) return
+
+  // Load plugin-provided components (editors, custom types) after config is available
+  await loadPluginComponents()
 
   initGestureListener()
   initShortcuts({

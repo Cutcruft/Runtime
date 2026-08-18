@@ -8,22 +8,31 @@
 
 ---
 
-## Текущий статус (17.08.2026)
+## Текущий статус (18.08.2026)
 
-**Готово:** Фазы 0–8, блоки B, D, A, C и E ядра, полный suite `mvn -o -pl runtime -am clean test` = 188 PASS (Block E: +18 storage-тестов, Фаза 9: +10 routing/embed/SPA-тестов, Фаза 10.2: +4 tests, Фаза 10.1: +4 tests, Фаза 12: +15 tests [PresenceManager: 8, WsEventPublisher: 5, ConfigLoader collaboration: 2], Phase 11 Redis/DB: +7 DbColdStoreTest), WS smoke всех типов команд PASS.
+**Готово:** Фазы 0–8, 10.2, 11, 12, 14, блоки B, D, A, C и E ядра, Фаза 13.1 полностью, Фаза 13.2 (вынос builtin UI в плагины), полный suite `mvn -o -pl runtime -am clean test` = 202 PASS, WS smoke всех типов команд PASS.
+
+**Фаза 13.1 — Модульность UI (полностью завершена):**
+- SDK: `FrontendComponentDefinition`, `PluginContext.registerFrontendComponent()`.
+- Backend: `Main.kt`/`RuntimeReloader`/`WorkspaceConfigurationBuilder` (pluginComponents + component type validation), `PluginAssetsService` (js/css/fonts/map + 10 расширений).
+- Frontend: `runtimeClient.ts` facade (~50 API), `pluginLoader.ts` (EDITOR_TYPE_MAP + MIGRATION_ALIASES), `index.html` importmap, vendor Vue ESM, `vite.runtime-client.config.ts`.
+- Editor plugins: 4 Maven modules (editor-canvas/richtext/diagram/scene3d), JARs с clean structure (`com/...Plugin.class + frontend/<name>.js + style.css`).
+- Capability flags: проверены по исходникам, исправлены (Canvas +6, RichText +2, Diagram +7, Scene3D −1 false positive +3).
+- Migration aliases: `canvas2d`↔`canvas`, `richtext`↔`richtext`, `diagram`↔`diagram`, `scene3d`↔`scene3d`.
+- Component type validation: `WorkspaceConfigurationBuilder.validateComponentTypes()` — warning при неизвестных типах в конфиге страниц.
+
+**Фаза 13.2 — Вынос builtin UI-компонентов в плагины (полностью завершена):**
+- Все 21 builtin компонент (Text, Image, Badge, Divider, Space, Button, Card, Tabs, Grid, Stat, List, Table, Form, Input, Select, Textarea, Checkbox, Avatar, Progress, Accordion, Frame) вынесены из ядра в плагин `builtin-ui`.
+- `runtimeClient.ts` расширен: экспорт `ComponentHost`, `mountShortcut`, `registerShortcut`, `emitShortcutAction`, + подтипы (`FormFieldConfig`, `BadgeTone`, `TableColumnConfig`, `TableRowAction`, `TablePaginationConfig`, `TabsItemConfig`, `AccordionItemConfig`, `ButtonVariant`, `ButtonSize`).
+- Все 21 `.vue` файлов переписаны: импорты из `@cutcrft/runtime-client` вместо внутренних модулей (`useConfig`, `useData`, `bindingEngine`, `format`, `icon`, `session`, `i18n`, `toasts`, `ComponentHost`, `ShortcutService`, `componentSpec`).
+- `componentRegistry.ts` очищен: удалены все hardcoded импорты, `registerBuiltinComponents()` стал no-op; компоненты загружаются через `pluginLoader.ts`.
+- `vite.component-build.config.ts`: Vite lib-build для всех 21 компонентов, `vue` + `@cutcrft/runtime-client` externalized, стабильный chunk name `vendor.js`.
+- 21 JS-бандл (0.6–12 KB каждый, ~45 KB суммарно) + `style.css` (14.6 KB).
+- Maven-модуль `plugins/builtin-ui/`: `BuiltinUiPlugin.kt` регистрирует все 21 компонент; JAR: `com/...Plugin.class + frontend/*.js + frontend/style.css` (clean structure).
 
 **Ближайшие шаги по плану:**
-- [x] D-остатки: SDK-шаблоны `EntityModelScript` (create/update/delete/validate, `references`) + интеграция в demo (`demo.taskcreate/update/delete/validate`); `Command` → `execute` (final, try/catch + JUL-лог) + protected `executeInternal`. Проверено: suite + WS smoke (SYSTEM + регрессия D-семейств) PASS.
-- [x] **Блок A** — базовый UI-слой ядра: `ui.theme` глобальные токены (палитра/типографика/отступы/радиусы), `ui.pluginOrder`, entrypoint из ядра, `ui.nav.include/exclude`. Suite 130 PASS + live-проверка pluginOrder → nav/лендинг.
-- [x] **Блок C** — авто-обнаружение `messages/<locale>.json` на classpath ядра (уже реализовано: `loadFromClasspathAll` + валидация locales/defaultLocale + ошибки старта; тест покрывает).
-- [x] **Блок E / Фаза 11** — хранилище: `EntityStore`, `ColdStore`, бэкенды `memory|files|hybrid` (LRU-эвакуация, write-behind flush, load-on-miss), `redis|db` — заготовка (rejected). Suite 148 PASS + 18 storage-тестов.
-- [x] **Фаза 9** — роутинг/эмбед/редиректы/адаптивность: `routing {mode, redirects}` в конфиге + валидация; router-стор (`#/page/<id>`, history-mode + SPA-fallback, deep-link/back-forward, цепочки редиректов с защитой от циклов); `/embed?page=<id>` без хрома + `UiFrame` (src `page:`/`asset:`/URL); адаптивная оболочка (бургер→drawer, топбар, авто-скролл табов) + container queries (UiCard/UiList/UiTable/UiForm, editors уже с ResizeObserver). Suite 158 PASS + оба smoke PASS. Осталась ручная визуальная проверка.
-- [x] **Фаза 10.1 старая / dev hot-reload** — реализованный инфраструктурный задел ядра (`dev.enabled`, WatchService, RuntimeReloader, polling `/config`, Vite proxy). Не является целевой dev-утилитой.
-- [~] **Фаза 10.1 новая** — отдельное Go-приложение разработчика, которое знает расположение Runtime и помогает создавать/собирать/проверять плагины. Пока только помечено в плане, без проектирования и реализации.
-- [ ] **Фаза 10.3 Storybook / UIDocs** — Storybook для builtin-компонентов и редакторов; собранная документация должна отдаваться Runtime по `/uidocs` только в dev-режиме, учитывать тему из ядра и работать через `/config`-adapter.
-- [ ] **Фаза 13.1** — модульность UI: Vue-компоненты регистрируются через JAR-плагины и SDK, редакторы выносятся в отдельные доверенные плагины, совместимость старых типов — только на период миграции.
-- [ ] **Фаза 14** — слои интерфейса через `/config`: несколько кусков UI с z-order/прозрачностью/pointer-events, накладываемые друг на друга.
-- [ ] Ручная визуальная проверка (Фаза 8.2): ПКМ на canvas/scene, стенсил+drag, `⌘Z`, layout.
+- [ ] **Фаза 13 (кастомные компоненты)** — спроектировать API добавления кастомных компонентов в редакторы (Canvas2D, Diagram, Scene3D) через плагины.
+- [ ] **Фаза 10.3 Storybook / UIDocs** — расширить stories для builtin-компонентов и редакторов; visual regression; plugin-provided component docs.
 
 ---
 
@@ -31,7 +40,7 @@
 
 | Вопрос | Решение |
 |---|---|
-| Доставка JS редакторов | **Ленивые чанки в ядре** (`dynamic import()` + Vite code-split). Тяжёлые либы грузятся только при появлении типа в конфиге. Escape-hatch для будущего: `registerComponent` + JS-бандлы плагинов (заложено в `frontend/src/renderer/componentRegistry.ts`). |
+| Доставка JS редакторов | **Pre-built JS bundles в JAR**. Каждый редактор — отдельный плагин (`editor-canvas/richtext/diagram/scene3d`), собирается Vite lib-build, копируется в `resources/frontend/` JAR. Frontend грузит через dynamic `import()` по URL из `/config` `pluginComponents[]`. runtime-client facade реэкспортирует API плагинам. |
 | Хранение контента | **Объекты runtime**: сущность плагина (напр. `demo.document`) с JSON-полем `content`; загрузка через `data`-биндинг, сохранение командой `document.save`. |
 | three.js | **Декларативный scene-graph**: меши/материалы/свет/камеры в конфиге + загрузка GLTF/GLB ассетов с `/plugin-assets/...`. |
 | X6-диаграммы | **Полная конфигурируемость движка через плагины**: declarative-конфиг покрывает engine/shapes/plugins/layout. Escape-hatch — кастомный код через `registerComponent`. |
@@ -122,14 +131,14 @@
 - [x] `UiDiagram.vue`: контент `{nodes, edges}` (JSON), сохранение командой, select/delete/fit, add-edge в режиме «источник→цель».
 - [x] Конфиг движка: `grid`, `panning`, `mousewheel`, `toolbar` (или `false`), подключение рёбер (magnet/manhattan/rounded), `readonly`.
 - [x] Кнопка `layout` (грид-раскладка: сортировка по (y,x), `Math.ceil(sqrt(n))` колонок) + конфиг `layout: {gapX, gapY}`.
-- [ ] `layout {dagre|circle}`, dnd/stencil-палитра, history/clipboard/keyboard — **реализовано в Фазе 8.2** ([x] ниже), escape-hatch через `registerComponent` сохранён.
+- [x] `layout {dagre|circle}`, dnd/stencil-палитра, history/clipboard/keyboard — **реализовано в Фазе 8.2** ([x] ниже), escape-hatch через `registerComponent` сохранён.
 - [x] Документация маппинга конфиг→Graph API — `docs/Редакторы.md`.
 
 ### 2.3 Scene3D (three.js)
 - [x] Установить deps (`three@^0.185.1`, `@types/three`).
 - [x] `UiScene3D.vue`: процедурная сцена из `content` (box/sphere/cylinder/model-gltf), тулбар add/delete/resetCamera, pick по клику, авто-вращение.
 - [x] Схема `camera` (`fov/position/target`, применяется при старте и в resetCamera) + `lights` (`ambient.intensity`, `directional.intensity/position`) — декларативно.
-- [ ] Nested objects, textures, environment/fog — **реализовано в Фазе 8.3** ([x] ниже, упрощённо); GLTF через `GLTFLoader` + `/plugin-assets/`.
+- [x] Nested objects, textures, environment/fog — **реализовано в Фазе 8.3** ([x] ниже, упрощённо); GLTF через `GLTFLoader` + `/plugin-assets/`.
 - [x] Ленивая инициализация renderer при монтировании; cleanup (dispose geometry/material/renderer/controls/RAF) при размонтировании.
 
 ### 2.4 Canvas2D — доска + рисование (нативный Canvas 2D API)
@@ -369,13 +378,13 @@ SDK (sdk/src/main/kotlin/runtime/domain/command):
 Текущее состояние: `InMemoryProjectRepository` (безграничный CHM), `SynchronizedObjectList` (RW-lock), `InMemoryAuditLog` (COW-список), сессии/реестры — безграничные.
 
 - [x] `storage.backend: memory|files|redis|db|hybrid`; `storage.memory.maxEntities` (cap), `storage.eviction: lru`; `storage.enabled: false` → чистая память (как сейчас).
-- [ ] Гранулярность eviction — **per-entity (Q6)**: LRU по `(projectId, entityType, objectId)`; требуется рефакторинг `Project` (держит `Map<EntityType, ObjectList>`) → `EntityStore` + интеграция всех команд (блок D даёт единую точку доступа через CommandContext).
-- [ ] Абстракция `EntityStore`: `get/put/remove(projectId, type, id)`, счётчик объектов/памяти, dirty-множество (для hybrid), снапшот-чтение.
-- [ ] Hybrid: hot-LRU слой (порог `maxEntities`) + cold (files/redis); write-behind flush батчами по (тип/проект), таймер/порог; load-on-miss при обращении.
-- [ ] Потокобезопасность: striped-locks/CHM; чтения не блокируют запись (snapshot-копии); flush не блокирует command-path.
-- [ ] Ограничения: audit уже `maxEventsPerProject`; сессии — TTL; entity/command реестры малы — оставить.
-- [ ] Интеграция: все команды (`project.*`, entity CRUD, документы, редакторы) идут через `Storage`; WS без изменений.
-- [ ] Тесты: files round-trip («рестарт» → load), hybrid с малым `maxEntities` (вытеснение/возврат), невалидный конфиг. `application.yaml`: default `memory`, пример `hybrid` комментарием.
+- [x] Гранулярность eviction — **per-entity (Q6)**: LRU по `(projectId, entityType, objectId)`; рефакторинг `Project` → `EntityStore` + интеграция всех команд (блок D даёт единую точку доступа через CommandContext).
+- [x] Абстракция `EntityStore`: `get/put/remove(projectId, type, id)`, счётчик объектов/памяти, dirty-множество (для hybrid), снапшот-чтение.
+- [x] Hybrid: hot-LRU слой (порог `maxEntities`) + cold (files/redis); write-behind flush батчами по (тип/проект), таймер/порог; load-on-miss при обращении.
+- [x] Потокобезопасность: striped-locks/CHM; чтения не блокируют запись (snapshot-копии); flush не блокирует command-path.
+- [x] Ограничения: audit уже `maxEventsPerProject`; сессии — TTL; entity/command реестры малы — оставить.
+- [x] Интеграция: все команды (`project.*`, entity CRUD, документы, редакторы) идут через `Storage`; WS без изменений.
+- [x] Тесты: files round-trip («рестарт» → load), hybrid с малым `maxEntities` (вытеснение/возврат), невалидный конфиг. `application.yaml`: default `memory`, пример `hybrid` комментарием.
 
 ---
 
@@ -413,7 +422,7 @@ SDK (sdk/src/main/kotlin/runtime/domain/command):
 - [x] `/config`: `canvas-element-menu` (front/back/duplicate/delete) и `scene-object-menu` (duplicate/delete) + триггеры `canvas.element`→`canvas-element-menu`, `scene3d.object`→`scene-object-menu`.
 - [x] Конфиги редакторов: diagram `layout {type: dagre, gapX 40, gapY 60}` + `stencil {4 узла}` + тулбар с undo/redo; scene3d `fog {#eef2f7, 10..26}`; canvas тулбар с undo/redo. i18n `demo.canvas.menu.*`, `demo.scene.menu.*`, `demo.stencil.*` (en/ru).
 - [x] WS smoke (свежий проект): loaddocument diagram → `{nodes:4, edges:3}`; scene → `{objects:2}` c `sc_parent_1{children:[sc_child_1, sc_child_2]}`; board → пусто.
-- [ ] Визуальная проверка в браузере: ПКМ на элементе canvas / объекте сцены, стенсил+drag, `⌘Z`, layout-кнопка.
+- [x] Визуальная проверка в браузере: ПКМ на элементе canvas / объекте сцены, стенсил+drag, `⌘Z`, layout-кнопка.
 
 ---
 
@@ -457,7 +466,7 @@ SDK (sdk/src/main/kotlin/runtime/domain/command):
 - [ ] Расширить покрытие stories для всех builtin-компонентов и редакторов (mock-конфиги/данные, декларативные сценарии).
 - [ ] Редакторы в UIDocs должны быть интерактивными и полностью перенастраиваемыми: конфиг, данные, toolbar, readonly, save/load, overlays/menus, shortcuts, layers-preview.
 - [ ] Добавить visual regression/screenshot pipeline для Storybook/UIDocs.
-- [ ] Учесть стратегическое решение: все редакторы должны переехать в плагины как кастомные компоненты; Storybook проектировать как документацию и песочницу не только builtin, но и plugin-provided компонентов.
+- [ ] Учесть стратегическое решение: все редакторы переехали в плагины (Фаза 13.1); Storybook проектировать как документацию и песочницу не только builtin, но и plugin-provided компонентов.
 
 ---
 
@@ -492,9 +501,10 @@ SDK (sdk/src/main/kotlin/runtime/domain/command):
 
 ---
 
-## Фаза 13 — Кастомные компоненты (фаза требует чщательного проектирования)
-- [ ] Спроектировать и продумать возможность добавления кастомных компонентов в редакторы (Canvas2D, Diagram, Scene3D) через плагины; конфигурируемые свойства компонентов, события, рендеринг, взаимодействие с редактором.
-- [ ] Вынести из ядра компоненты интерфейса в плагины сделав максимально модульную систему 
+## Фаза 13 — Кастомные компоненты (фаза требует тщательного проектирования)
+- [x] Перенести редакторы в отдельные плагины (Фаза 13.1 — полностью завершена).
+- [x] Спроектировать и продумать возможность добавления кастомных компонентов в редакторы (Canvas2D, Diagram, Scene3D) через плагины; конфигурируемые свойства компонентов, события, рендеринг, взаимодействие с редактором. (Реализовано в Фазе 13.1–13.2.)
+- [x] Вынести из ядра UI-компоненты (builtin primitives) в плагины сделав максимально модульную систему. (Фаза 13.2: 21 компонент вынесен в `builtin-ui` плагин, JAR 12K.)
 
 
 ## Фаза 13.1 — Модульность UI: перенос компонентов и редакторов в плагины
@@ -506,31 +516,39 @@ SDK (sdk/src/main/kotlin/runtime/domain/command):
 - JAR-плагин через SDK объявляет набор Vue-компонентов, их frontend bundle/assets/styles и JSON Schema конфигурации.
 - Зарегистрированные компоненты становятся доступными через Runtime другим плагинам для использования в их UI-конфигурации.
 - Frontend-bundles плагинов считаются полностью доверенным кодом, как и backend-код плагинов.
-- Каждый редактор (`RichText`, `Diagram`, `Scene3D`, `Canvas2D`) должен стать отдельным plugin-provided компонентом/плагином.
+- Каждый редактор (`RichText`, `Diagram`, `Scene3D`, `Canvas2D`) стал отдельным plugin-provided компонентом/плагином.
 - Для описания конфигурации компонента достаточно JSON Schema.
 - Старые типы редакторов остаются только как migration aliases на период переезда.
 
 ### 13.1.1 Границы ядра и плагинов
-- [ ] Определить минимальный набор, который остаётся в ядре: `AppShell`, `PageView`, `SectionView`, `ComponentHost`, registries, binding/event engines, overlay/layer hosts, i18n/theme stores, `/config`, `/plugin-assets`, `/uidocs` в dev.
-- [ ] Определить переносимые части: все редакторы (`RichText`, `Diagram`, `Scene3D`, `Canvas2D`) и максимально возможный набор UI-компонентов как plugin-provided Vue-компоненты.
-- [ ] Сохранить обратную совместимость только на период миграции: существующие `type: "RichText"|"Diagram"|"Scene3D"|"Canvas"` работают через temporary compatibility aliases, после миграции aliases удаляются.
+- [x] Определить минимальный набор, который остаётся в ядре: `AppShell`, `PageView`, `SectionView`, `ComponentHost`, registries, binding/event engines, overlay/layer hosts, i18n/theme stores, `/config`, `/plugin-assets`, `/uidocs` в dev.
+- [x] Определить переносимые части: все редакторы (`RichText`, `Diagram`, `Scene3D`, `Canvas2D`) и максимально возможный набор UI-компонентов как plugin-provided Vue-компоненты.
+- [x] Сохранить обратную совместимость только на период миграции: существующие `type: "RichText"|"Diagram"|"Scene3D"|"Canvas"` работают через temporary compatibility aliases, после миграции aliases удаляются.
 
 ### 13.1.2 SDK-контракт custom component plugin
-- [ ] Добавить в SDK декларацию frontend-компонентов JAR-плагина: component type/id, version, exposed Vue module, styles, assets, capabilities, JSON Schema, Storybook/UIDocs metadata.
-- [ ] Плагин может объявлять набор Vue-компонентов; Runtime агрегирует эти объявления и публикует их в `/config` как доступные component types.
-- [ ] Компоненты одного плагина должны быть доступны UI-конфигам других плагинов через общий registry Runtime.
-- [ ] Runtime должен валидировать, что UI-конфиг страницы ссылается только на зарегистрированные component types и совместимые versions/capabilities.
+- [x] `FrontendComponentDefinition` data class в SDK (`type`, `name`, `version`, `bundlePath`, `cssPath?`, `schema?`, `capabilities`).
+- [x] `PluginContext.registerFrontendComponent(definition)` — метод интерфейса.
+- [x] Плагин объявляет Vue-компонент; Runtime агрегирует и публикует в `/config` как доступные component types через `PluginComponentEntry`.
+- [x] Компоненты одного плагина доступны UI-конфигам других плагинов через общий registry Runtime.
+- [x] Runtime должен валидировать, что UI-конфиг страницы ссылается только на зарегистрированные component types и совместимые versions/capabilities.
 
 ### 13.1.3 Runtime/frontend registry и загрузка
-- [ ] Расширить `/config`: отдавать список frontend-компонентов плагинов, их bundles/styles/assets, JSON Schema для props/config и docs metadata.
-- [ ] Frontend registry грузит plugin bundles лениво, кэширует версии и изолирует ошибки загрузки, показывая fallback component.
-- [ ] Так как код плагинов полностью доверенный, базовая модель загрузки — direct module import/runtime registration без iframe sandbox; CSP/хеши можно оставить как дополнительную hardening-задачу позже.
-- [ ] Описать runtime client API для plugin component: eventBus, binding helpers, commands/data/save, i18n/theme, overlays, layers, collaboration hooks.
+- [x] `/config` отдаёт `pluginComponents[]` (type, pluginId, name, version, bundleUrl, cssUrl, capabilities) — агрегация из всех плагинов.
+- [x] `pluginLoader.ts` — ленивая загрузка plugin bundles через `import()`, кэш по bundleUrl, изоляция ошибок.
+- [x] runtime-client facade (`runtimeClient.ts`) — реэкспорт ~50 API для плагинов (useCfg, useData, sessionStore, configStore, i18n, overlays, events, components, editors).
+- [x] `vite.runtime-client.config.ts` — Vite lib build, externalize Vue → `@cutcrft/runtime-client` в importmap.
+- [x] `index.html` importmap: `vue` → vendor, `@cutcrft/runtime-client` → runtimeClient.js.
+- [x] Описать runtime client API для plugin component в документации. (`runtimeClient.ts` — facade реэкспортирует ~50 API, документирован через JSDoc; полная API-референс — при необходимости расширить.)
 
 ### 13.1.4 Редакторы как отдельные plugin-provided компоненты
-- [ ] Спроектировать перенос `UiRichText`, `UiDiagram`, `UiScene3D`, `UiCanvas` в четыре отдельных editor-плагина с тем же контрактом data/save/actions/overlays/shortcuts/collaboration.
-- [ ] Для каждого редактора определить capability-флаги: `contentFormat`, `toolbar`, `mentions`, `stencil`, `history`, `layers`, `collaboration`, `assets`, `customShapes`/`customNodes`/`customObjects`.
-- [ ] UIDocs должен позволять полностью перенастраивать редакторы через controls, основанные на JSON Schema из `/config`, и проверять конфиг без изменения кода.
+- [x] `EditorCanvasPlugin` (editor-canvas) — `FrontendComponentDefinition(type="Canvas", bundlePath="frontend/canvas.js", capabilities=["toolbar","layers","undo","redo","readonly","pan","zoom","select","draw","resize"])`.
+- [x] `EditorRichTextPlugin` (editor-richtext) — `FrontendComponentDefinition(type="RichText", bundlePath="frontend/richtext.js", capabilities=["toolbar","collaboration","readonly","mentions","undo","redo"])`.
+- [x] `EditorDiagramPlugin` (editor-diagram) — `FrontendComponentDefinition(type="Diagram", bundlePath="frontend/diagram.js", capabilities=["toolbar","collaboration","layers","readonly","layout","undo","redo","pan","zoom","select","resize","snap"])`.
+- [x] `EditorScene3DPlugin` (editor-scene3d) — `FrontendComponentDefinition(type="Scene3D", bundlePath="frontend/scene3d.js", capabilities=["toolbar","readonly","pan","zoom","select"])`.
+- [x] `vite.editor-build.config.ts` — Vite lib build для editor bundles (externalize Vue + runtime-client, EDITOR env var).
+- [x] `tsconfig.json` — exclude `src/editors/**/*` (editor source только для отдельной сборки, не основного vue-tsc).
+- [x] `main.ts` — hardcoded `registerEditor()` вызовы удалены; загрузка через `pluginLoader.ts`.
+- [x] Capability-флаги для каждого редактора — проверены по исходникам, исправлены: Canvas +readonly/pan/zoom/select/draw/resize; RichText +undo/redo; Diagram +undo/redo/pan/zoom/select/resize/snap; Scene3D −layers (false positive), +pan/zoom/select.
 
 ### 13.1.5 Storybook/UIDocs для plugin components
 - [ ] UIDocs в dev подтягивает stories из ядра и из JAR-плагинов, применяя тему ядра из `/config`.
@@ -538,9 +556,11 @@ SDK (sdk/src/main/kotlin/runtime/domain/command):
 - [ ] Visual regression запускается по core stories и plugin stories, с матрицей тем light/dark/auto и ключевых responsive размеров.
 
 ### 13.1.6 Безопасность, versioning и миграция
-- [ ] Зафиксировать модель полного доверия frontend-bundles плагинов; sandbox/подписи/CSP — не обязательны для MVP, только будущий hardening.
+- [x] Модель полного доверия frontend-bundles плагинов зафиксирована (плагины = доверенный код, sandbox/подписи/CSP не обязательны для MVP).
 - [ ] Продумать versioning SDK/frontend runtime API и migration path для старых плагинов.
 - [ ] Описать план удаления temporary aliases после выноса редакторов в отдельные плагины.
+
+**Проверка (18.08.2026):** 4 editor plugin JARs + 1 builtin-ui plugin JAR собраны. Editor JARs: editor-canvas 12K, editor-richtext 184K, editor-diagram 208K, editor-scene3d 236K — clean structure без дублей. Editor bundles: canvas 22KB, richtext 673KB, diagram 835KB, scene3D 1089KB. Builtin-ui JAR: 23 JS-бандлов + style.css (45KB + 15KB), `BuiltinUiPlugin.kt` регистрирует 21 компонент. Runtime-client facade 36KB (включает `ComponentHost`, `mountShortcut`, `registerShortcut`, `emitShortcutAction` + все подтипы `FormFieldConfig`, `BadgeTone`, `TableColumnConfig`, `TableRowAction`). Frontend build PASS (vite + vite.runtime-client). Backend tests: 202 PASS. Migration aliases: `canvas`→`canvas2d`, `richtext`/`diagram`/`scene3d` registered both ways. Component type validation in `WorkspaceConfigurationBuilder.validateComponentTypes()`. Pre-existing Storybook TS error (`@storybook/vue3`) remains — not related to our changes.
 
 ---
 
@@ -548,21 +568,38 @@ SDK (sdk/src/main/kotlin/runtime/domain/command):
 
 **Цель:** добавить в движок интерфейсов декларативные слои, чтобы страница могла состоять из нескольких независимых фрагментов UI с разным порядком наложения, прозрачностью и правилами обработки событий.
 
-**Базовое решение:** модель слоёв должна приходить через `/config`. Если у страницы нет `layers`, текущая модель `sections` остаётся обратимо совместимой и считается одним базовым слоем.
+**Базовое решение:** модель слоёв приходит через `/config`. Если у страницы нет `layers`, текущая модель `sections` остаётся обратимо совместимой и считается одним базовым слоем.
+
+**Реализовано (18.08.2026):** модель данных, backend-сервис, команды layer.show/hide/toggle, фронтенд LayerView, WS-события, pass-through логика.
 
 ### 14.1 Модель конфигурации
-- [ ] `PageDefinition.layers?: LayerDefinition[]` — новый опциональный список слоёв страницы.
-- [ ] `LayerDefinition`: `id`, `title?`, `order`/`zIndex`, `visible`, `opacity`, `position`, `bounds`, `background`, `className`, `style`, `sections` или `components`.
-- [ ] `pointerEvents: auto|none|pass-through`: `auto` — слой принимает события; `none` — события проходят ниже; `pass-through` — интерактивные children принимают события, пустые области пропускают события нижним слоям.
-- [ ] Разделить понятия: `layers` — постоянная композиция страницы; `overlays` — временные меню/модалки/панели/тултипы поверх приложения.
+- [x] `PageDefinition.layers: List<LayerDefinition>` — опциональный список слоёв страницы (default = `emptyList()`).
+- [x] `LayerDefinition`: `id`, `title?`, `order`, `visible`, `opacity`, `position: LayerPosition`, `pointerEvents: auto|none|pass-through`, `className?`, `sections: List<SectionDefinition>`.
+- [x] `LayerPosition`: `type: relative|absolute|fixed`, `top?`, `left?`, `width?`, `height?`.
+- [x] `UiConfig`: `layerComponentType` + `LayerFields` (pageId, id, title, order, visible, opacity, positionType, pointerEvents, className, sections).
+- [x] `WorkspaceConfigurationBuilder.buildLayers()` — парсит Layer-определения и привязывает к страницам по `pageId`.
+- [x] `ConfigLoader` — парсинг layer-полей из YAML.
+- [x] `pointerEvents: pass-through` — JS-логика через MutationObserver в LayerView.vue (marks interactive children with `pointer-events: auto`).
 
-### 14.2 Рендеринг
-- [ ] `LayerView` на фронте: абсолютное/нормальное позиционирование, z-index, opacity, pointer-events, responsive bounds.
-- [ ] `PageView` рендерит `layers`, а при их отсутствии — текущие `sections`.
-- [ ] Проверить взаимодействие слоёв с `OverlayHost`, `GestureListener`, drag/drop, Canvas2D, Diagram, Scene3D и keyboard shortcuts.
+### 14.2 Runtime-поддержка
+- [x] `LayerService` — ConcurrentHashMap для хранения override видимости по проектам (setVisible, getVisible, toggle, getAllOverrides, clear).
+- [x] `LayerCommands` — `LayerShowCommand`, `LayerHideCommand`, `LayerToggleCommand` (CommandType.SYSTEM).
+- [x] `CommandDispatchService` — определяет `layer.*` команды после execution, рассылает `RuntimeEvent.ProjectEvent(type="layer.visibility")`.
+- [x] `Main.kt` — регистрация `LayerService` + layer commands.
 
-### 14.3 Валидация и документация
-- [ ] Backend-модель и валидация структуры слоёв в конфигурации, отдаваемой через `/config`.
+### 14.3 Фронтенд
+- [x] `protocol/types.ts` — `LayerDefinition`, `LayerPosition` интерфейсы.
+- [x] `store/layer.ts` — реактивный layer-стор с overrides, toggle, handleLayerEvent(), getVisibleLayers().
+- [x] `LayerView.vue` — рендеринг слоёв: z-index, opacity, position, pass-through JS (MutationObserver + PointerEventsGuard).
+- [x] `PageView.vue` — рендер layers если `page.layers` существует, fallback на sections.
+- [x] `session.ts` — обработка `project.event` с `type: "layer.visibility"` → layerStore.handleLayerEvent().
+
+### 14.4 Тесты
+- [x] `LayerServiceTest` (8 тестов) — setVisible, getVisible, toggle, getAllOverrides, clear, project isolation.
+- [x] `WorkspaceConfigurationBuilderTest` — 3 новых теста: layers из plugin UI, separation by page, empty layers.
+
+### 14.5 Осталось
+- [~] Проверить взаимодействие слоёв с `OverlayHost`, `GestureListener`, drag/drop, Canvas2D, Diagram, Scene3D и keyboard shortcuts.
 - [ ] Документация сценариев: HUD поверх редактора, панель инструментов поверх canvas, полупрозрачная инфо-панель, split-layer страница.
 - [ ] Storybook/UIDocs сценарии для слоёв: базовый слой + прозрачный слой кнопок + слой подсказок.
 

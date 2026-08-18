@@ -11,8 +11,6 @@ export const WS_MESSAGE_TYPES = {
   CURSOR_UPDATE: 'cursor.update'
 } as const
 
-export type WsMessageType = (typeof WS_MESSAGE_TYPES)[keyof typeof WS_MESSAGE_TYPES]
-
 export interface WsEnvelope {
   type: string
   requestId?: string
@@ -26,50 +24,11 @@ export interface CommandResultPayload {
   error?: string
 }
 
-export interface ObjectChangedPayload {
-  entityType: string
-  objectId: string
-  value?: unknown
-}
-
-export interface ProjectEventPayload {
-  type: string
-  projectId?: string
-  [key: string]: unknown
-}
-
-export interface ErrorPayload {
-  message: string
-}
-
 export interface ParticipantPayload {
   sessionId: string
   name: string
   color?: string
 }
-
-export interface PresenceListPayload {
-  participants: ParticipantPayload[]
-}
-
-export interface CursorUpdatePayload {
-  entityType: string
-  objectId: string
-  position: unknown
-  selection?: unknown
-}
-
-export type EventKind =
-  | 'object.changed'
-  | 'project.event'
-  | 'error'
-  | 'presence.join'
-  | 'presence.leave'
-  | 'presence.list'
-  | 'cursor.update'
-  | 'navigation.request'
-  | 'command.request'
-  | 'shortcut.triggered'
 
 export interface RuntimeEvent {
   kind: string

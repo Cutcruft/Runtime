@@ -1,5 +1,6 @@
 import { reactive } from 'vue'
 import type { PageDefinition, LayerDefinition } from '../protocol/types'
+import { globalSingleton } from '../utils/globalSingleton'
 
 /**
  * Reactive store for per-page layer visibility overrides.
@@ -7,7 +8,7 @@ import type { PageDefinition, LayerDefinition } from '../protocol/types'
  */
 function createLayerStore() {
   /** pageId → (layerId → visible override) */
-  const overrides = reactive(new Map<string, Map<string, boolean>>())
+  const overrides = globalSingleton('__cc_layer', () => reactive(new Map<string, Map<string, boolean>>()))
 
   function setVisible(pageId: string, layerId: string, visible: boolean) {
     let pageMap = overrides.get(pageId)

@@ -14,7 +14,7 @@ import vue from '@vitejs/plugin-vue'
 const editorName = process.env.EDITOR || 'canvas'
 
 const editorEntryMap: Record<string, string> = {
-  canvas: resolve(__dirname, 'src/editors/canvas/UiCanvas.vue'),
+  canvas: resolve(__dirname, 'src/editor/UiCanvas.vue'),
   richtext: resolve(__dirname, 'src/editor/UiRichText.vue'),
   diagram: resolve(__dirname, 'src/editor/UiDiagram.vue'),
   scene3d: resolve(__dirname, 'src/editor/UiScene3D.vue'),

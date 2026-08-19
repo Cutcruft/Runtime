@@ -1,6 +1,7 @@
 import { reactive } from 'vue'
 import { sessionStore } from './session'
 import { toasts } from './toasts'
+import { globalSingleton } from '../utils/globalSingleton'
 
 interface EntityCache {
   revision: number
@@ -9,7 +10,7 @@ interface EntityCache {
   error: string | null
 }
 
-const caches = reactive(new Map<string, EntityCache>())
+const caches = globalSingleton('__cc_data', () => reactive(new Map<string, EntityCache>()))
 
 function ensure(entityType: string): EntityCache {
   let cache = caches.get(entityType)

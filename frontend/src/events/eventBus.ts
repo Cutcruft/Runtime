@@ -1,8 +1,11 @@
 import type { RuntimeEvent } from '../protocol/envelope'
+import { globalSingleton } from '../utils/globalSingleton'
 
 type Handler = (event: RuntimeEvent) => void
 
-const handlers = new Set<Handler>()
+const { handlers } = globalSingleton('__cc_evbus', () => ({
+  handlers: new Set<Handler>()
+}))
 
 export function subscribeEvent(handler: Handler): () => void {
   handlers.add(handler)

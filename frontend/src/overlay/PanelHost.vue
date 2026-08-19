@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue'
-import ComponentHost from '../components/ComponentHost.vue'
+import ComponentHost from '../core/primitives/Container.vue'
 import { overlayService, type OverlayInstance } from '../overlay/overlayService'
 import { i18nStore } from '../store/i18n'
 

@@ -1,6 +1,6 @@
-import { defineComponent as i, ref as u, openBlock as n, createElementBlock as s, unref as t, normalizeStyle as d, normalizeClass as p, toDisplayString as _, createCommentVNode as f, createElementVNode as m } from "vue";
+import { defineComponent as i, ref as u, openBlock as n, createElementBlock as s, unref as t, normalizeStyle as d, normalizeClass as p, toDisplayString as f, createCommentVNode as _, createElementVNode as m } from "vue";
 import { useCfg as v, runAction as h, findAction as g } from "@cutcrft/runtime-client";
-import { _ as x } from "./vendor.js";
+import { _ as x } from "./vendor2.js";
 const b = ["title"], y = {
   key: 0,
   class: "ui-field__label"
@@ -20,7 +20,7 @@ const b = ["title"], y = {
       style: d(t(e).style),
       title: t(e).tooltip
     }, [
-      t(e).label ? (n(), s("span", y, _(t(e).label), 1)) : f("", !0),
+      t(e).label ? (n(), s("span", y, f(t(e).label), 1)) : _("", !0),
       m("textarea", {
         value: a.value,
         rows: t(e).rows,
@@ -30,7 +30,7 @@ const b = ["title"], y = {
       }, null, 40, C)
     ], 14, b));
   }
-}), A = /* @__PURE__ */ x(w, [["__scopeId", "data-v-c13a1021"]]);
+}), A = /* @__PURE__ */ x(w, [["__scopeId", "data-v-27731df3"]]);
 export {
   A as default
 };

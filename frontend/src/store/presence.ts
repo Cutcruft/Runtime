@@ -1,15 +1,16 @@
 import { reactive } from 'vue'
 import type { ParticipantPayload } from '../protocol/envelope'
+import { globalSingleton } from '../utils/globalSingleton'
 
 interface PresenceState {
   participants: ParticipantPayload[]
   localSessionId: string | null
 }
 
-const state = reactive<PresenceState>({
+const state = globalSingleton('__cc_presence', () => reactive<PresenceState>({
   participants: [],
   localSessionId: null
-})
+}))
 
 export const presenceStore = {
   get participants(): ParticipantPayload[] {

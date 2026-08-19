@@ -14,28 +14,30 @@ import vue from '@vitejs/plugin-vue'
 
 const componentName = process.env.COMPONENT
 
+const pluginFrontend = resolve(__dirname, '../plugins/builtin-ui/src/main/frontend')
+
 const componentEntryMap: Record<string, string> = {
-  text: resolve(__dirname, 'src/components/UiText.vue'),
-  image: resolve(__dirname, 'src/components/UiImage.vue'),
-  badge: resolve(__dirname, 'src/components/UiBadge.vue'),
-  divider: resolve(__dirname, 'src/components/UiDivider.vue'),
-  space: resolve(__dirname, 'src/components/UiSpace.vue'),
-  button: resolve(__dirname, 'src/components/UiButton.vue'),
-  card: resolve(__dirname, 'src/components/UiCard.vue'),
-  tabs: resolve(__dirname, 'src/components/UiTabs.vue'),
-  grid: resolve(__dirname, 'src/components/UiGrid.vue'),
-  stat: resolve(__dirname, 'src/components/UiStat.vue'),
-  list: resolve(__dirname, 'src/components/UiList.vue'),
-  table: resolve(__dirname, 'src/components/UiTable.vue'),
-  form: resolve(__dirname, 'src/components/UiForm.vue'),
-  input: resolve(__dirname, 'src/components/UiInput.vue'),
-  select: resolve(__dirname, 'src/components/UiSelect.vue'),
-  textarea: resolve(__dirname, 'src/components/UiTextarea.vue'),
-  checkbox: resolve(__dirname, 'src/components/UiCheckbox.vue'),
-  avatar: resolve(__dirname, 'src/components/UiAvatar.vue'),
-  progress: resolve(__dirname, 'src/components/UiProgress.vue'),
-  accordion: resolve(__dirname, 'src/components/UiAccordion.vue'),
-  frame: resolve(__dirname, 'src/components/UiFrame.vue'),
+  text: resolve(pluginFrontend, 'UiText.vue'),
+  image: resolve(pluginFrontend, 'UiImage.vue'),
+  badge: resolve(pluginFrontend, 'UiBadge.vue'),
+  divider: resolve(pluginFrontend, 'UiDivider.vue'),
+  space: resolve(pluginFrontend, 'UiSpace.vue'),
+  button: resolve(pluginFrontend, 'UiButton.vue'),
+  card: resolve(pluginFrontend, 'UiCard.vue'),
+  tabs: resolve(pluginFrontend, 'UiTabs.vue'),
+  grid: resolve(pluginFrontend, 'UiGrid.vue'),
+  stat: resolve(pluginFrontend, 'UiStat.vue'),
+  list: resolve(pluginFrontend, 'UiList.vue'),
+  table: resolve(pluginFrontend, 'UiTable.vue'),
+  form: resolve(pluginFrontend, 'UiForm.vue'),
+  input: resolve(pluginFrontend, 'UiInput.vue'),
+  select: resolve(pluginFrontend, 'UiSelect.vue'),
+  textarea: resolve(pluginFrontend, 'UiTextarea.vue'),
+  checkbox: resolve(pluginFrontend, 'UiCheckbox.vue'),
+  avatar: resolve(pluginFrontend, 'UiAvatar.vue'),
+  progress: resolve(pluginFrontend, 'UiProgress.vue'),
+  accordion: resolve(pluginFrontend, 'UiAccordion.vue'),
+  frame: resolve(pluginFrontend, 'UiFrame.vue'),
 }
 
 const names = componentName ? [componentName] : Object.keys(componentEntryMap)

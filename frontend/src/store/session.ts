@@ -8,12 +8,28 @@ import { layerStore } from './layer'
 import { presenceStore } from './presence'
 import { cursorStore } from './cursors'
 import { toasts } from './toasts'
+import { globalSingleton } from '../utils/globalSingleton'
 
-const wsStatus = ref<WsStatus>('disconnected')
-const projectId = ref<string | null>(null)
+const STORAGE_KEY = 'cc.projectId'
 
-let client: WsClient | null = null
-let reconnectProjectId: string | null = null
+const { wsStatus, projectId, sessionState } = globalSingleton('__cc_sess', () => ({
+  wsStatus: ref<WsStatus>('disconnected'),
+  projectId: ref<string | null>(null),
+  sessionState: { client: null as WsClient | null, reconnectProjectId: null as string | null }
+}))
+
+function persistProject(id: string | null): void {
+  try {
+    if (id) localStorage.setItem(STORAGE_KEY, id)
+    else localStorage.removeItem(STORAGE_KEY)
+  } catch { /* localStorage unavailable */ }
+}
+
+function loadPersistedProject(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEY)
+  } catch { return null }
+}
 
 export const sessionStore = {
   get wsStatus(): WsStatus {
@@ -31,37 +47,39 @@ export const sessionStore = {
 
   init(): void {
     const wsPath = configStore.transport?.wsPath ?? '/ws'
-    client = new WsClient(wsPath)
-    client.onStatusChange = (status) => {
+    sessionState.client = new WsClient(wsPath)
+    sessionState.client.onStatusChange = (status) => {
       wsStatus.value = status
       if (status === 'connected') {
         sendIdentityIfCollaborationEnabled()
-        if (reconnectProjectId) {
-          openProject(reconnectProjectId)
+        const target = sessionState.reconnectProjectId ?? loadPersistedProject()
+        if (target) {
+          openProject(target)
         }
       } else if (status === 'disconnected') {
         presenceStore.clear()
       }
     }
-    client.onEvent = (envelope) => handleIncoming(envelope)
-    client.connect()
+    sessionState.client.onEvent = (envelope) => handleIncoming(envelope)
+    sessionState.client.connect()
   },
 
   execute(commandId: string, params: unknown): Promise<CommandResultPayload> {
-    if (!client) return Promise.reject(new Error('Session not initialized'))
-    return client.execute(commandId, params)
+    if (!sessionState.client) return Promise.reject(new Error('Session not initialized'))
+    return sessionState.client.execute(commandId, params)
   },
 
   sendRaw(type: string, payload: Record<string, unknown>): void {
-    if (!client) return
-    client.sendRaw(type, payload)
+    if (!sessionState.client) return
+    sessionState.client.sendRaw(type, payload)
   },
 
   async createProject(): Promise<string> {
     const result = await executeChecked('project.create', null)
     const id = readProjectId(result)
     projectId.value = id
-    reconnectProjectId = id
+    sessionState.reconnectProjectId = id
+    persistProject(id)
     dataStore.refreshAll()
     sendIdentityIfCollaborationEnabled()
     return id
@@ -69,11 +87,13 @@ export const sessionStore = {
 
   async openProject(id: string): Promise<string> {
     const result = await executeChecked('project.open', { projectId: id })
-    projectId.value = readProjectId(result)
-    reconnectProjectId = id
+    const pid = readProjectId(result)
+    projectId.value = pid
+    sessionState.reconnectProjectId = pid
+    persistProject(pid)
     dataStore.refreshAll()
     sendIdentityIfCollaborationEnabled()
-    return id
+    return pid
   },
 
   async executeCommand(commandId: string, params: unknown): Promise<CommandResultPayload> {
@@ -86,8 +106,8 @@ export const sessionStore = {
 }
 
 function sendIdentityIfCollaborationEnabled(): void {
-  if (!configStore.collaboration?.enabled || !client) return
-  client.sendRaw(WS_MESSAGE_TYPES.CLIENT_IDENTITY, {
+  if (!configStore.collaboration?.enabled || !sessionState.client) return
+  sessionState.client.sendRaw(WS_MESSAGE_TYPES.CLIENT_IDENTITY, {
     name: generateAnonymousName(),
     color: generateColor()
   })
@@ -107,8 +127,8 @@ function generateColor(): string {
 }
 
 async function executeChecked(commandId: string, params: unknown): Promise<CommandResultPayload> {
-  if (!client) throw new Error('Session not initialized')
-  const result = await client.execute(commandId, params)
+  if (!sessionState.client) throw new Error('Session not initialized')
+  const result = await sessionState.client.execute(commandId, params)
   if (result.status === 'ERROR') {
     throw new Error(result.error ?? `Command '${commandId}' failed`)
   }
@@ -197,6 +217,11 @@ function handleIncoming(envelope: WsEnvelope): void {
 
 function openProject(id: string): void {
   sessionStore.openProject(id).catch(() => {
-    /* rebind on reconnect failed — will retry next reconnect */
+    console.warn(`[Session] project.open failed for ${id}, creating new project`)
+    persistProject(null)
+    sessionState.reconnectProjectId = null
+    sessionStore.createProject().catch((err) => {
+      console.error('[Session] auto-create after failed open also failed:', err)
+    })
   })
 }

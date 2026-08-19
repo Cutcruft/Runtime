@@ -2,9 +2,12 @@ import { watch } from 'vue'
 import { configStore } from './config'
 import { pageStore } from './page'
 import type { RoutingMode } from '../protocol/types'
+import { globalSingleton } from '../utils/globalSingleton'
 
-let applying = false
-let initialized = false
+const routerState = globalSingleton('__cc_router', () => ({
+  applying: false,
+  initialized: false
+}))
 
 function pagePath(pageId: string): string {
   return `/page/${encodeURIComponent(pageId)}`
@@ -29,7 +32,7 @@ function parsePageFromUrl(): string | null {
 function handleLocationChange(): void {
   const raw = parsePageFromUrl()
   if (raw === null) return
-  applying = true
+  routerState.applying = true
   try {
     const resolved = resolvePage(raw)
     pageStore.restore(resolved)
@@ -37,7 +40,7 @@ function handleLocationChange(): void {
       window.history.replaceState(null, '', urlFor(resolved))
     }
   } finally {
-    applying = false
+    routerState.applying = false
   }
 }
 
@@ -76,8 +79,8 @@ export const routerStore = {
   },
 
   init(): void {
-    if (initialized) return
-    initialized = true
+    if (routerState.initialized) return
+    routerState.initialized = true
 
     if (this.isEmbed) {
       const target = this.embedPage ?? configStore.app?.landingPageId ?? null
@@ -95,7 +98,7 @@ export const routerStore = {
     watch(
       () => pageStore.activePageId,
       (pageId) => {
-        if (applying || !pageId) return
+        if (routerState.applying || !pageId) return
         const expected = urlFor(pageId)
         const current = configStore.routing.mode === 'history'
           ? window.location.pathname + window.location.search

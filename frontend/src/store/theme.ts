@@ -1,11 +1,16 @@
 import { ref } from 'vue'
 import { configStore } from './config'
+import { globalSingleton } from '../utils/globalSingleton'
 
 export type ThemeMode = 'auto' | 'light' | 'dark'
 
 const STORAGE_KEY = 'cc.theme'
 const media = window.matchMedia('(prefers-color-scheme: dark)')
-const mode = ref<ThemeMode>(loadMode())
+
+const { mode, pluginTokens } = globalSingleton('__cc_theme', () => ({
+  mode: ref<ThemeMode>(loadMode()),
+  pluginTokens: new Map<string, Record<string, string>>()
+}))
 
 const LIGHT_TOKENS: Record<string, string> = {
   'color-bg': '#f5f6f8',
@@ -76,10 +81,17 @@ export function applyTheme(): void {
   const tokens = {
     ...(effective === 'dark' ? DARK_TOKENS : LIGHT_TOKENS)
   }
+  // Layer 1: workspace config tokens
   for (const [name, value] of Object.entries(configStore.theme?.tokens ?? {})) {
     if (name.endsWith('.light') && effective !== 'light') continue
     if (name.endsWith('.dark') && effective !== 'dark') continue
     tokens[name.replace(/\.(light|dark)$/, '')] = value
+  }
+  // Layer 2: plugin-contributed tokens (highest priority)
+  for (const [, pluginTokenMap] of pluginTokens) {
+    for (const [name, value] of Object.entries(pluginTokenMap)) {
+      tokens[name] = value
+    }
   }
   for (const [name, value] of Object.entries(tokens)) {
     root.style.setProperty(`--rt-${name}`, value)
@@ -105,5 +117,33 @@ export const themeStore = {
       if (mode.value === 'auto') applyTheme()
     })
     applyTheme()
+  },
+
+  /** Register plugin-contributed theme tokens. Returns an unregister function. */
+  registerPluginTokens(pluginId: string, tokens: Record<string, string>): () => void {
+    pluginTokens.set(pluginId, tokens)
+    applyTheme()
+    return () => {
+      pluginTokens.delete(pluginId)
+      applyTheme()
+    }
+  },
+
+  /** Get the resolved value of a theme token */
+  getToken(name: string): string | undefined {
+    return getComputedStyle(document.documentElement).getPropertyValue(`--rt-${name}`).trim() || undefined
+  },
+
+  /** Get all currently resolved token values */
+  getTokens(): Record<string, string> {
+    const style = getComputedStyle(document.documentElement)
+    const result: Record<string, string> = {}
+    for (let i = 0; i < style.length; i++) {
+      const prop = style[i]
+      if (prop.startsWith('--rt-')) {
+        result[prop.slice(5)] = style.getPropertyValue(prop).trim()
+      }
+    }
+    return result
   }
 }

@@ -2,6 +2,7 @@ import { reactive } from 'vue'
 import { emitEvent } from './eventBus'
 import { pageStore } from '../store/page'
 import type { ShortcutEntry } from '../protocol/types'
+import { globalSingleton } from '../utils/globalSingleton'
 
 interface ActiveShortcut {
   entry: ShortcutEntry
@@ -13,8 +14,10 @@ interface ShortcutContext {
   dispatch: (entry: ShortcutEntry) => void
 }
 
-const active = reactive(new Map<string, ActiveShortcut>())
-let context: ShortcutContext | null = null
+const { active, shortcutState } = globalSingleton('__cc_shortcut', () => ({
+  active: reactive(new Map<string, ActiveShortcut>()),
+  shortcutState: { context: null as ShortcutContext | null }
+}))
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform ?? '')
 
@@ -67,9 +70,9 @@ function isShortcutActive(activeShortcut: ActiveShortcut): boolean {
   const { entry, mounted } = activeShortcut
   switch (entry.scope) {
     case 'component':
-      return mounted && (entry.page == null || entry.page === context?.getActivePage())
+      return mounted && (entry.page == null || entry.page === shortcutState.context?.getActivePage())
     case 'page':
-      return entry.page != null && entry.page === context?.getActivePage()
+      return entry.page != null && entry.page === shortcutState.context?.getActivePage()
     case 'global':
     default:
       return true
@@ -77,7 +80,7 @@ function isShortcutActive(activeShortcut: ActiveShortcut): boolean {
 }
 
 export function initShortcuts(ctx: ShortcutContext): () => void {
-  context = ctx
+  shortcutState.context = ctx
   const listener = (event: KeyboardEvent) => {
     const target = event.target as HTMLElement | null
     if (target && isEditable(target)) return
@@ -141,4 +144,34 @@ function isEditable(target: HTMLElement): boolean {
     return true
   }
   return target.isContentEditable
+}
+
+/** List all registered shortcuts (for runtime UI / settings panel). */
+export function listShortcuts(): ShortcutEntry[] {
+  return [...active.values()].map((s) => s.entry)
+}
+
+/** Reassign keys for an existing shortcut by ID. Returns true if found. */
+export function reassignShortcut(id: string, newKeys: string[]): boolean {
+  const existing = active.get(id)
+  if (!existing) return false
+  existing.entry = { ...existing.entry, keys: newKeys }
+  return true
+}
+
+/** Format a key combo for display (e.g. "mod+k" → "⌘K" on Mac). */
+export function formatCombo(combo: string): string {
+  const parsed = parseCombo(combo)
+  const parts: string[] = []
+  if (parsed.modifiers.meta) parts.push(IS_MAC ? '⌘' : 'Win')
+  if (parsed.modifiers.ctrl) parts.push(IS_MAC ? '⌃' : 'Ctrl')
+  if (parsed.modifiers.alt) parts.push(IS_MAC ? '⌥' : 'Alt')
+  if (parsed.modifiers.shift) parts.push(IS_MAC ? '⇧' : 'Shift')
+  const keyMap: Record<string, string> = {
+    escape: 'Esc', enter: 'Enter', ' ': 'Space',
+    arrowup: '↑', arrowdown: '↓', arrowleft: '←', arrowright: '→',
+    backspace: '⌫', delete: 'Del', tab: 'Tab'
+  }
+  parts.push(keyMap[parsed.key] ?? parsed.key.toUpperCase())
+  return IS_MAC ? parts.join('') : parts.join('+')
 }

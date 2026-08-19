@@ -104,6 +104,7 @@ export class WsClient {
     }
     if (envelope.type === WS_MESSAGE_TYPES.ERROR) {
       this.rejectPending(envelope.requestId, (envelope.payload.message as string) ?? 'Unknown error')
+      if (envelope.requestId) return
     }
     this.onEvent?.(envelope)
   }

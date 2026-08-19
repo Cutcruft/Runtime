@@ -1,5 +1,6 @@
 import { computed, reactive } from 'vue'
 import type { I18nConfiguration } from '../protocol/types'
+import { globalSingleton } from '../utils/globalSingleton'
 
 interface I18nState {
   config: I18nConfiguration | null
@@ -19,10 +20,10 @@ function resolveInitialLocale(config: I18nConfiguration | null): string {
   return config.defaultLocale
 }
 
-const state = reactive<I18nState>({
+const state = globalSingleton('__cc_i18n', () => reactive<I18nState>({
   config: null,
   locale: 'en'
-})
+}))
 
 function interpolate(text: string, params?: Record<string, unknown>): string {
   if (!params) return text

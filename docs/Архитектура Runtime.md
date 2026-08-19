@@ -308,4 +308,349 @@ CutCruft/
 1. **Ядро без предметного кода** — Runtime не знает ни одной предметной модели.
 2. **Плагины доверенные** — загружаются локально, не sandboxed.
 3. **Только WS API** — Frontend не знает runtime-классов: команды выполняются через `command.execute` по WebSocket `/ws`, конфигурация UI читается из `GET /config`.
+
+---
+
+## 15. Frontend Architecture
+
+### 15.1 Принцип: «Тупой фронтенд»
+
+Frontend — это **минимальный shell**, который:
+- Рендерит UI
+- Обрабатывает ввод
+- Отправляет команды на backend
+- **ИСКЛЮЧЕНИЕ**: render-логика (tiptap, three.js) — OK на фронте
+
+Вся остальная логика — в Kotlin-плагинах на backend.
+
+```
+Frontend (TS/Vue):
+├── Рендерит UI
+├── Обрабатывает ввод
+├── Отправляет команды на backend
+└── ИСКЛЮЧЕНИЕ: render-логика (tiptap, three.js) — OK на фронте
+
+Backend (Kotlin):
+├── Вся бизнес-логика
+├── Валидация данных
+├── Обработка команд
+└── Persistence
+```
+
+### 15.2 Структура ядра фронтенда
+
+```
+frontend/src/
+├── core/
+│   ├── primitives/          # Layout-примитивы
+│   │   ├── Container.vue    # Рендерит зарегистрированный компонент по типу
+│   │   ├── Page.vue         # Верхнеуровневый layout
+│   │   ├── Section.vue      # Секция внутри страницы
+│   │   ├── Stack.vue        # Горизонтальный/вертикальный стек
+│   │   ├── Grid.vue         # Сетка
+│   │   ├── Layer.vue        # z-index слой
+│   │   ├── Slot.vue         # Именованная зона контента
+│   │   └── Portal.vue       # Рендер в другую часть DOM
+│   ├── features/            # Фичи интерфейса
+│   │   ├── CommandPalette.vue
+│   │   ├── Sidebar.vue
+│   │   ├── Tabs.vue
+│   │   ├── Toast.vue
+│   │   └── Docs.vue
+│   ├── theme/               # Темизация
+│   │   ├── ThemeProvider.vue
+│   │   └── theme.css        # Auto-generated из theme.yaml
+│   ├── shortcuts/           # Горячие клавиши
+│   │   └── ShortcutManager.ts
+│   ├── commands/            # Реестр команд
+│   │   └── CommandRegistry.ts
+│   ├── events/              # Event bus (plugin-to-plugin)
+│   │   └── EventBus.ts
+│   ├── entity/              # Entity store API
+│   │   └── EntityStore.ts
+│   ├── animations/          # API анимаций
+│   │   └── AnimationManager.ts
+│   ├── router/              # Навигация
+│   │   └── Router.ts
+│   ├── modal/               # Модальные окна
+│   │   └── ModalManager.ts
+│   ├── clipboard/           # Буфер обмена
+│   │   └── ClipboardManager.ts
+│   ├── auditlog/            # Undo/аудит
+│   │   └── AuditLog.ts
+│   └── plugin/              # Загрузка плагинов
+│       ├── pluginLoader.ts
+│       ├── PluginContext.ts
+│       └── registries/
+│           ├── componentRegistry.ts
+│           └── editorRegistry.ts
+├── protocol/                # Типы и протоколы
+│   ├── envelope.ts
+│   └── types.ts
+├── store/                   # Stores (session, i18n, toasts)
+├── main.ts
+└── runtimeClient.ts         # SDK facade для плагинов
+```
+
+### 15.3 UI-примитивы
+
+Ядро предоставляет **абстрактные строительные блоки**:
+
+| Примитив | Назначение |
+|---|---|
+| `Container` | Рендерит зарегистрированный компонент по типу (resolve по registry) |
+| `Page` | Верхнеуровневый layout (контейнер для sections/layers) |
+| `Section` | Секция внутри страницы (auto-layout) |
+| `Stack` | Горизонтальный/вертикальный стек (was SectionView) |
+| `Grid` | Сетка (grid layout) |
+| `Layer` | z-index слой (with visibility/opacity/position) |
+| `Slot` | Именованная зона контента (как slot в web components) |
+| `Portal` | Рендер в другую часть DOM |
+
+### 15.4 Plugin Context API
+
+Каждый плагин получает объект контекста:
+
+```typescript
+interface PluginContext {
+  // Регистрация
+  registerComponent(type: string, component: Component): void
+  registerCommand(name: string, handler: Function): void
+  registerShortcut(key: string, action: string): void
+  
+  // Тема (read-only)
+  theme: ThemeObject
+  
+  // Хранилище
+  storage: { get(key: string): any; set(key: string, value: any): void }
+  
+  // События (plugin-to-plugin)
+  emit(event: string, data: any): void
+  on(event: string, handler: Function): void
+  
+  // Entity Store
+  entityStore: {
+    list(entityType: string): Promise<Entity[]>
+    get(entityType: string, id: string): Promise<Entity>
+    create(entityType: string, data: any): Promise<Entity>
+    update(entityType: string, id: string, data: any): Promise<Entity>
+    delete(entityType: string, id: string): Promise<void>
+  }
+  
+  // Анимации
+  animate(element: Element, animation: string, options?: AnimationOptions): Promise<void>
+  animation: { class(name: string): string }
+  
+  // Навигация
+  router: {
+    push(path: string): void
+    replace(path: string): void
+    back(): void
+  }
+  
+  // Модальные окна
+  modal: {
+    open(component: Component, props?: any): Promise<any>
+    close(result?: any): void
+  }
+  
+  // Буфер обмена
+  clipboard: {
+    read(): Promise<string>
+    write(text: string): Promise<void>
+  }
+  
+  // Аудит-лог (undo)
+  auditlog: {
+    push(action: string, data: any): void
+    undo(): Promise<void>
+    canUndo(): boolean
+  }
+  
+  // Утилиты
+  format: FormatUtils
+  icon: IconUtils
+}
+```
+
+### 15.5 Theming System
+
+Тема задаётся в YAML-конфиге ядра и автоматически генерирует CSS-переменные:
+
+```yaml
+# theme.yaml
+colors:
+  primary: '#3b82f6'
+  secondary: '#64748b'
+  background: '#ffffff'
+  foreground: '#0f172a'
+
+fonts:
+  sans: 'Inter, sans-serif'
+  mono: 'Fira Code, monospace'
+
+spacing:
+  sm: '8px'
+  md: '16px'
+  lg: '24px'
+
+radius:
+  sm: '4px'
+  md: '8px'
+  lg: '16px'
+
+animations:
+  fade-in: { duration: 200ms, easing: ease-out }
+  slide-up: { duration: 300ms, easing: ease-in-out }
+  scale-in: { duration: 150ms, easing: cubic-bezier(0.4, 0, 0.2, 1) }
+```
+
+Core генерирует:
+- CSS-переменные (`--color-primary`, `--font-sans`, etc.)
+- CSS-классы анимаций (`.anim-fade-in`, `.anim-slide-up`, etc.)
+
+Плагины расширяют тему через `config.yaml`:
+```yaml
+# plugin/config.yaml
+theme:
+  colors:
+    my-brand: '#ff0000'
+```
+
+### 15.6 Keyboard Shortcuts
+
+- YAML config + runtime UI (пользователь может менять в настройках)
+- `ShortcutManager` управляет регистрацией/переназначением
+- Плагины регистрируют через `config.yaml` или `ctx.registerShortcut()`
+
+### 15.7 Event System (plugin-to-plugin)
+
+Плагины общаются через события:
+```typescript
+// Плагин A
+ctx.emit('canvas:export', { format: 'png' })
+
+// Плагин B
+ctx.on('canvas:export', handleExport)
+```
+
+### 15.8 Animation API
+
+Плагины используют анимации через API:
+```typescript
+// Через API
+await ctx.animate(element, 'fade-in', { duration: 200 })
+
+// Или через CSS-класс
+const className = ctx.animation.class('fade-in')  // → 'anim-fade-in'
+```
+
+Типы анимаций:
+- Transition (fade, slide, scale, rotate)
+- Loading (spinner, skeleton, pulse)
+- Attention (shake, bounce, glow)
+- Layout (expand, collapse, reflow)
+
+### 15.9 Storybook (`/storybook`)
+
+Built-in route в runtime:
+- Доступен по `http://localhost:8080/storybook`
+- Показывает все зарегистрированные компоненты
+- Theming через YAML → live preview
+- Редактирование темы через UI
+- Экспорт в код
+
+---
+
+## 16. Plugin System (Frontend)
+
+### 16.1 Структура плагина
+
+```
+plugins/my-plugin/
+├── config.yaml           # Metadata + registration + dependencies
+├── pom.xml               # Maven (для JAR)
+├── src/main/
+│   ├── kotlin/           # Backend (Kotlin)
+│   │   └── MyPlugin.kt
+│   └── resources/
+│       ├── frontend/
+│       │   ├── Button.js
+│       │   ├── Button.html
+│       │   └── style.css  (минимальный, тема из ядра)
+│       └── META-INF/
+│           └── plugin.yaml
+└── target/
+    └── my-plugin.jar
+```
+
+### 16.2 config.yaml
+
+```yaml
+name: my-plugin
+version: 1.0.0
+description: My custom plugin
+
+dependencies:
+  - builtin-ui
+  - editor-canvas
+
+coreVersion: '>=1.0.0 <2.0.0'
+
+components:
+  - type: my-button
+    name: MyButton
+    entry: frontend/Button.js
+    template: frontend/Button.html
+    props:
+      variant: [primary, secondary, ghost]
+      size: [sm, md, lg]
+    capabilities: [text, icon, disabled]
+
+commands:
+  - name: my-button:submit
+    backend: com.example.MyPlugin.handleSubmit
+    shortcuts:
+      - key: Enter
+        action: submit
+
+shortcuts:
+  - key: Ctrl+Shift+M
+    action: my-button:submit
+    description: Submit form
+```
+
+### 16.3 Plugin Loading
+
+1. Core starts
+2. Core reads `theme.yaml` → generates CSS variables
+3. Core scans `.plugins/` directory for JAR files
+4. For each JAR:
+   a. Read `config.yaml`
+   b. Load JS bundle (dist/my-plugin.js)
+   c. Execute plugin with PluginContext
+   d. Plugin calls `ctx.registerComponent('my-button', MyButton)`
+   e. Plugin calls `ctx.registerCommand('my-button:submit', handler)`
+   f. Plugin calls `ctx.registerShortcut('Ctrl+Shift+M', 'my-button:submit')`
+5. All components/commands/shortcuts registered
+6. UI renders using registered components
+
+### 16.4 Plugin Discovery
+
+- Scan `.plugins/` directory + read `config.yaml`
+- Topological sort based on dependencies
+- Configurable error handling (`failOnError` flag)
+- Manual update (replace JAR, restart)
+
+### 16.5 Component Capabilities
+
+Auto-detected from component implementation. Core determines which editors/components can use the plugin based on capabilities.
+
+### 16.6 Template System
+
+Hybrid: Vue SFC, HTML+TS, JSX/TSX — поддержка всех форматов.
+
+### 16.7 Component Slots
+
+Through `PluginContext.slots` (текущий подход).
 4. **UI декларативен** — Frontend строит интерфейс из `UIDefinition`.

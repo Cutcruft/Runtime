@@ -31,6 +31,7 @@ import runtime.application.workspace.WorkspaceConfigurationBuilder
 import runtime.domain.entity.EntityType
 import runtime.domain.models.Messages
 import runtime.domain.models.WorkspaceConfiguration
+import runtime.domain.plugin.PluginId
 import runtime.domain.repositories.CommandRegistry
 import runtime.domain.repositories.SessionRepository
 import runtime.infrastructure.configuration.ConfigLoader

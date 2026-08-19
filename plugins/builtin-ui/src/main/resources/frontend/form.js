@@ -1,6 +1,6 @@
 import { defineComponent as Q, ref as L, computed as x, reactive as g, watch as j, onMounted as G, openBlock as s, createElementBlock as r, withModifiers as H, normalizeStyle as J, normalizeClass as k, unref as c, Fragment as N, renderList as M, createTextVNode as q, toDisplayString as p, createCommentVNode as b, withDirectives as y, vModelDynamic as W, vModelText as A, createElementVNode as v, vModelSelect as X, vModelCheckbox as Y } from "vue";
 import { i18nStore as Z, useContainerQuery as ee, useCfg as te, sessionStore as E, findAction as ae, runAction as ne, toasts as oe } from "@cutcrft/runtime-client";
-import { _ as se } from "./vendor.js";
+import { _ as se } from "./vendor2.js";
 const re = ["for"], ue = {
   key: 0,
   class: "ui-form__required"
@@ -197,7 +197,7 @@ const re = ["for"], ue = {
       ], 2)
     ], 38));
   }
-}), ke = /* @__PURE__ */ se(he, [["__scopeId", "data-v-966eb150"]]);
+}), ke = /* @__PURE__ */ se(he, [["__scopeId", "data-v-a616ce85"]]);
 export {
   ke as default
 };

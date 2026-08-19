@@ -16,7 +16,7 @@ export default defineConfig({
       formats: ['es'],
       fileName: 'runtimeClient'
     },
-    outDir: resolve(__dirname, 'dist/plugin-assets'),
+    outDir: resolve(__dirname, 'dist'),
     emptyOutDir: false,
     rollupOptions: {
       external: [

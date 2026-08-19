@@ -40,43 +40,60 @@ const MIGRATION_ALIASES: Record<string, string> = {
 /**
  * Load all plugin-provided frontend components declared in the workspace config.
  * Called once after configStore.load() during bootstrap.
+ *
+ * Strategy:
+ *  - Editors: register lazy loaders only (import on demand when a page uses them).
+ *  - Generic components: import in parallel for fast startup.
  */
 export async function loadPluginComponents(): Promise<void> {
   const pluginComponents = configStore.value?.pluginComponents
   if (!pluginComponents?.length) return
 
+  const editors: typeof pluginComponents = []
+  const generics: typeof pluginComponents = []
+
   for (const entry of pluginComponents) {
     if (loadedBundles.has(entry.bundleUrl)) continue
+    const editorKey = EDITOR_TYPE_MAP[entry.type]
+    if (editorKey) {
+      editors.push(entry)
+    } else {
+      generics.push(entry)
+    }
+  }
 
-    try {
-      // Inject CSS if present
-      if (entry.cssUrl) {
-        injectCss(entry.cssUrl)
+  // Register lazy loaders for editors — they only import when a page needs them
+  for (const entry of editors) {
+    const editorKey = EDITOR_TYPE_MAP[entry.type]
+    if (!editorKey) continue
+    if (entry.cssUrl) injectCss(entry.cssUrl)
+
+    const bundleUrl = entry.bundleUrl
+    registerEditor(editorKey, () => import(/* @vite-ignore */ bundleUrl))
+    for (const [alias, key] of Object.entries(MIGRATION_ALIASES)) {
+      if (key === editorKey && alias !== editorKey) {
+        registerEditor(alias, () => import(/* @vite-ignore */ bundleUrl))
       }
+    }
+    loadedBundles.add(bundleUrl)
+    console.log(`[PluginLoader] Registered lazy editor "${entry.type}" from ${bundleUrl}`)
+  }
 
+  // Import generic components in parallel
+  const results = await Promise.allSettled(
+    generics.map(async (entry) => {
+      if (entry.cssUrl) injectCss(entry.cssUrl)
       const module = await import(/* @vite-ignore */ entry.bundleUrl)
       const component = module.default ?? module
-
-      // Editor types: register as lazy editor loader
-      const editorKey = EDITOR_TYPE_MAP[entry.type]
-      if (editorKey) {
-        registerEditor(editorKey, () => module)
-        // Register migration aliases so both "Canvas" and "canvas2d" configs work
-        for (const [alias, key] of Object.entries(MIGRATION_ALIASES)) {
-          if (key === editorKey && alias !== editorKey) {
-            registerEditor(alias, () => module)
-          }
-        }
-      } else {
-        // Generic component: register immediately
-        registerComponent(entry.type, component)
-      }
-
+      registerComponent(entry.type, component)
       loadedBundles.add(entry.bundleUrl)
       console.log(`[PluginLoader] Loaded "${entry.type}" from ${entry.bundleUrl}`)
-    } catch (err) {
-      console.error(`[PluginLoader] Failed to load "${entry.type}" from ${entry.bundleUrl}:`, err)
-    }
+    })
+  )
+
+  const failed = results.filter((r) => r.status === 'rejected')
+  if (failed.length > 0) {
+    console.warn(`[PluginLoader] ${failed.length}/${generics.length} component bundles failed to load`)
   }
 }
 

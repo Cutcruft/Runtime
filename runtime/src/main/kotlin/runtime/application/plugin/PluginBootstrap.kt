@@ -28,7 +28,7 @@ class PluginBootstrap(
     private val messages: Messages
 ) {
     data class Result(
-        val descriptors: List<runtime.infrastructure.plugin.PluginDescriptor>,
+        val descriptors: List<runtime.domain.models.PluginDescriptor>,
         val loadedPluginIds: Set<PluginId>,
         val uiDefinitions: List<RegisteredUi>,
         val frontendComponents: List<Pair<PluginId, FrontendComponentDefinition>>,

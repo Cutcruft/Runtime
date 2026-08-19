@@ -1,6 +1,6 @@
 import { defineComponent as y, ref as r, onMounted as b, openBlock as a, createElementBlock as s, unref as o, normalizeStyle as C, normalizeClass as x, toDisplayString as f, createCommentVNode as h, withDirectives as V, createElementVNode as v, Fragment as k, renderList as A, vModelSelect as K } from "vue";
 import { useCfg as U, sessionStore as w, runAction as E, findAction as N } from "@cutcrft/runtime-client";
-import { _ as z } from "./vendor.js";
+import { _ as z } from "./vendor2.js";
 const B = ["title"], D = {
   key: 0,
   class: "ui-field__label"
@@ -60,7 +60,7 @@ const B = ["title"], D = {
       ])
     ], 14, B));
   }
-}), q = /* @__PURE__ */ z(F, [["__scopeId", "data-v-904f3029"]]);
+}), q = /* @__PURE__ */ z(F, [["__scopeId", "data-v-bd6e8a85"]]);
 export {
   q as default
 };

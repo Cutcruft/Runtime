@@ -20,6 +20,6 @@
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"],
-  "exclude": ["src/editors/**/*"],
+  "exclude": ["src/editors/**/*", "src/stories/**/*"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

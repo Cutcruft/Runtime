@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/vue3'
-import ComponentHost from '../components/ComponentHost.vue'
+import ComponentHost from '../core/primitives/Container.vue'
 import { mockUiDocsCatalog } from '../storybook/mockRuntime'
 
 const fixtures = mockUiDocsCatalog.components

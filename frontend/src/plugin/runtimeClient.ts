@@ -42,11 +42,17 @@ export { cursorStore } from '../store/cursors'
 export { presenceStore } from '../store/presence'
 export { layerStore } from '../store/layer'
 
-// ── Component host (recursive renderer for containers) ──────────
-export { default as ComponentHost } from '../components/ComponentHost.vue'
+// ── Core primitives (re-exported as named) ──────────────────────
+export { Container, Page, Section, Layer, Tabs, Toast, Stack, Grid, Slot, Portal } from '../core/primitives'
+
+// ── Theme provider ──────────────────────────────────────────────
+export { default as ThemeProvider } from '../core/ThemeProvider.vue'
+
+// ── Component host (backward-compat alias for plugin bundles) ────
+export { default as ComponentHost } from '../core/primitives/Container.vue'
 
 // ── Shortcut service ───────────────────────────────────────────
-export { mountShortcut, registerShortcut, emitShortcutAction } from '../events/ShortcutService'
+export { mountShortcut, registerShortcut, emitShortcutAction, listShortcuts, reassignShortcut, formatCombo } from '../events/ShortcutService'
 
 // ── Overlay service ────────────────────────────────────────────
 export { overlayService } from '../overlay/overlayService'
@@ -56,9 +62,43 @@ export { subscribeEvent, emitEvent } from '../events/eventBus'
 export type { RuntimeEvent } from '../protocol/envelope'
 
 // ── Registry ───────────────────────────────────────────────────
-export { registerComponent, resolveComponent, registeredTypes } from '../renderer/componentRegistry'
-export { registerEditor, resolveEditor, isEditorType, registeredEditorTypes } from '../editor/editorRegistry'
+export { registerComponent, resolveComponent, registeredTypes, unregisterComponent } from '../renderer/componentRegistry'
+export { registerEditor, resolveEditor, isEditorType, registeredEditorTypes, unregisterEditor } from '../editor/editorRegistry'
 export type { EditorLoader } from '../editor/editorRegistry'
+
+// ── Plugin Context (new API for plugin authors) ────────────────
+export { createPluginContext } from '../core/services/pluginContext'
+export type { PluginContext, PluginContextOptions } from '../core/services/pluginContext'
+
+// ── Core Services ──────────────────────────────────────────────
+export {
+  emitPluginEvent,
+  onPluginEvent,
+  clearPluginEventHandlers,
+  createPluginStorage,
+  createEntityStore,
+  modalApi,
+  clipboardApi,
+  createAuditLog,
+  animationApi
+} from '../core/services'
+export type {
+  PluginEvent,
+  PluginStorage,
+  EntityStoreApi,
+  EntityStoreConfig,
+  AuditLogApi,
+  AuditEntry,
+  ModalApi,
+  ModalOptions,
+  MenuOptions,
+  MenuItem,
+  PanelOptions,
+  ModalHandle,
+  ClipboardApi,
+  AnimationApi,
+  AnimationOptions
+} from '../core/services'
 
 // ── Types (for plugin TypeScript consumers) ────────────────────
 export type {

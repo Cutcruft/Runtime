@@ -1,4 +1,5 @@
 import { reactive } from 'vue'
+import { globalSingleton } from '../utils/globalSingleton'
 
 export interface RemoteCursor {
   sessionId: string
@@ -17,12 +18,12 @@ interface CursorState {
   cursors: Map<string, RemoteCursor>
 }
 
-const state = reactive<CursorState>({
-  cursors: new Map()
-})
+const { state, listeners } = globalSingleton('__cc_cursor', () => ({
+  state: reactive<CursorState>({ cursors: new Map() }),
+  listeners: new Set<Listener>()
+}))
 
 const STALE_MS = 10_000
-const listeners = new Set<Listener>()
 
 function notify(): void {
   for (const fn of listeners) fn()

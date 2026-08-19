@@ -46,12 +46,13 @@ async function bootstrap(): Promise<void> {
   i18nStore.init(configStore.i18n)
   routerStore.init()
   overlayService.registerWorkspace(configStore.overlays, configStore.overlayTriggers)
-  createApp(App).mount('#app')
 
   if (!configStore.loaded) return
+  createApp(App).mount('#app')
 
-  // Load plugin-provided components (editors, custom types) after config is available
-  await loadPluginComponents()
+  // Load plugin components after mount — registryVersion is reactive so
+  // Container.vue re-evaluates when each plugin registers
+  loadPluginComponents().catch(() => { /* individual errors logged by loader */ })
 
   initGestureListener()
   initShortcuts({

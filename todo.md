@@ -8,9 +8,9 @@
 
 ---
 
-## Текущий статус (18.08.2026)
+## Текущий статус (19.08.2026)
 
-**Готово:** Фазы 0–8, 10.2, 11, 12, 14, блоки B, D, A, C и E ядра, Фаза 13.1 полностью, Фаза 13.2 (вынос builtin UI в плагины), полный suite `mvn -o -pl runtime -am clean test` = 202 PASS, WS smoke всех типов команд PASS.
+**Готово:** Фазы 0–8, 10.2, 11, 12, 14, блоки B, D, A, C и E ядра, Фаза 13.1 полностью, Фаза 13.2 (вынос builtin UI в плагины), Фаза 13.3 (чистка legacy/dead code), Фаза 14 (слои через /config), Фаза 15 (Frontend Architecture: UI-примитивы + Plugin System), полный suite `mvn -o -pl runtime -am clean test` = 202 PASS, WS smoke всех типов команд PASS.
 
 **Фаза 13.1 — Модульность UI (полностью завершена):**
 - SDK: `FrontendComponentDefinition`, `PluginContext.registerFrontendComponent()`.
@@ -30,9 +30,19 @@
 - 21 JS-бандл (0.6–12 KB каждый, ~45 KB суммарно) + `style.css` (14.6 KB).
 - Maven-модуль `plugins/builtin-ui/`: `BuiltinUiPlugin.kt` регистрирует все 21 компонент; JAR: `com/...Plugin.class + frontend/*.js + frontend/style.css` (clean structure).
 
+**Фаза 13.3 — Чистка legacy/dead code и билд-артефактов (полностью завершена):**
+- Frontend: удалены 21 `Ui*.vue` из `src/components/` (перемещены в `plugins/builtin-ui/src/main/frontend/`), удалена папка `src/editors/` (orphaned дубликат).
+- Frontend: удалены `registerBuiltinComponents()` (no-op) из `componentRegistry.ts`, `main.ts`, `mockRuntime.ts`; удалён `removePluginCss()` из `pluginLoader.ts`.
+- Frontend: удалены мёртвые типы из `types.ts` (`TableColumnsConfig`, `FormFieldOptions`, `FormFieldConfig`) и `envelope.ts` (`WsMessageType`, `ObjectChangedPayload`, `ProjectEventPayload`, `ErrorPayload`, `PresenceListPayload`, `CursorUpdatePayload`, `EventKind`).
+- Backend: создан `PluginBootstrap.kt` — вынесена общая логика plugin discovery + bootstrap + message loading из `Main.kt` и `RuntimeReloader.kt` (убрано дублирование ~80 строк).
+- Backend: `Main.kt` и `RuntimeReloader.kt` переписаны на `PluginBootstrap`; `println()`/`printStackTrace()` заменены на `java.util.logging.Logger`.
+- Backend: `CommandExecutor.kt` — deprecated `capitalize()` заменён на `replaceFirstChar { it.titlecase() }`.
+- `.gitignore`: добавлены `plugins/*/target/`, `plugins/*/*.jar`.
+- Удалены `target/` и дублирующие JAR из `plugins/`; удалены orphaned `frontend/` из `plugins/editor-*/`; удалён `Runtime.iml`.
+
 **Ближайшие шаги по плану:**
-- [ ] **Фаза 13 (кастомные компоненты)** — спроектировать API добавления кастомных компонентов в редакторы (Canvas2D, Diagram, Scene3D) через плагины.
-- [ ] **Фаза 10.3 Storybook / UIDocs** — расширить stories для builtin-компонентов и редакторов; visual regression; plugin-provided component docs.
+- [ ] **Фаза 10.3** — Storybook / UIDocs (расширить stories для builtin-компонентов и редакторов).
+- [ ] **Фаза 14.5** — Документация сценариев слоёв (HUD, панель поверх canvas, полупрозрачная инфо-панель, split-layer).
 
 ---
 
@@ -47,6 +57,17 @@
 | i18n | **Ресурсы в JAR плагина** (`messages/<lang>.json`), runtime агрегирует в `/config`; ссылка на перевод в конфиге — интерполяция `{{<pluginId>.<key>}}` (в т.ч. частичная), fallback локаль → `defaultLocale` → ключ; в коде `t(key, params)`. Резолв — на клиенте. |
 | Модалки/меню/тултипы | **Декларативные триггеры**: конфиг-привязка к типам компонентов/объектов + события жестов (contextmenu/dblclick/selection/drag) на eventBus. |
 | Canvas 2D | **Оба**: интерактивная доска (примитивы) + свободное рисование. Нативный Canvas 2D API, минимум зависимостей. |
+| Frontend архитектура | **Ядро = примитивы** (Container, Page, Section, Stack, Grid, Layer, Slot, Portal) + тема + реестр + event bus. **Плагины = конкретные компоненты** (кнопки, инпуты, редакторы). |
+| "Тупой фронтенд" | Frontend только рендерит + обрабатывает ввод + отправляет команды на backend. **ИСКЛЮЧЕНИЕ**: render-логика (tiptap, three.js) — OK на фронте. Вся остальная логика — в Kotlin-плагинах. |
+| Keyboard shortcuts | YAML config + runtime UI (пользователь может менять в настройках). `ShortcutManager` управляет регистрацией/переназначением. |
+| Event system | Plugin-to-plugin communication через `ctx.emit/on`. |
+| Theming | YAML → CSS variables (auto-generated). Плагины расширяют тему через `config.yaml`. |
+| Plugin discovery | Scan `.plugins/` directory + topological sort по зависимостям из `config.yaml`. |
+| Error handling | Configurable (`failOnError` flag). |
+| Plugin update | Manual (replace JAR, restart). |
+| SDK | Kotlin SDK (backend plugins) + TypeScript SDK (frontend plugins). |
+| Template system | Hybrid: Vue SFC, HTML+TS, JSX/TSX — поддержка всех форматов. |
+| Component slots | Through `PluginContext.slots`. |
 
 ---
 
@@ -602,6 +623,158 @@ SDK (sdk/src/main/kotlin/runtime/domain/command):
 - [~] Проверить взаимодействие слоёв с `OverlayHost`, `GestureListener`, drag/drop, Canvas2D, Diagram, Scene3D и keyboard shortcuts.
 - [ ] Документация сценариев: HUD поверх редактора, панель инструментов поверх canvas, полупрозрачная инфо-панель, split-layer страница.
 - [ ] Storybook/UIDocs сценарии для слоёв: базовый слой + прозрачный слой кнопок + слой подсказок.
+
+---
+
+## Фаза 15 — Frontend Architecture: UI-примитивы и Plugin System (полностью завершена)
+
+**Цель:** спроектировать и реализовать модульную архитектуру фронтенда, где ядро提供ляет минимальный набор UI-примитивов, а все конкретные компоненты поставляются плагинами. Плагины разрабатываются через SDK (Kotlin + TypeScript), регистрируются без пересборки ядра, и используют тему из конфига ядра.
+
+**Решения:**
+- Ядро фронтенда = **минимальный shell** (примитивы + тема + реестр + event bus)
+- Плагины = **конкретные компоненты** (кнопки, инпуты, редакторы, etc.)
+- Плагины получают **PluginContext** из ядра (entity store, events, theme, router, modal, clipboard, auditlog)
+- **"Тупой фронтенд"**: вся логика в Kotlin-плагинах на backend; frontend только рендерит + обрабатывает ввод + отправляет команды
+- **ИСКЛЮЧЕНИЕ**: render-логика (tiptap, three.js) — OK на фронте
+- **Theming**: YAML → CSS variables (auto-generated); плагины расширяют тему через config.yaml
+- **Keyboard shortcuts**: YAML config + runtime UI (пользователь может менять)
+- **Event system**: plugin-to-plugin communication через emit/on
+- **Plugin discovery**: scan `.plugins/` directory + topological sort by dependencies
+- **Error handling**: configurable (`failOnError` flag)
+- **Plugin update**: manual (replace JAR, restart)
+- **SDK**: Kotlin SDK (backend plugins) + TypeScript SDK (frontend plugins)
+- **Template system**: hybrid (Vue SFC, HTML+TS, JSX/TSX)
+- **Component slots**: through `PluginContext.slots`
+
+### 15.1 Renaming core components to abstract primitives
+
+- [x] `ComponentHost.vue` → `Container.vue` (физически перемещён в `src/core/primitives/`)
+- [x] `PageView.vue` → `Page.vue` (физически перемещён)
+- [x] `SectionView.vue` → `Section.vue` (физически перемещён)
+- [x] `TabsBar.vue` → `Tabs.vue` (физически перемещён)
+- [x] `ToastViewport.vue` → `Toast.vue` (физически перемещён)
+- [x] `LayerView.vue` → `Layer.vue` (физически перемещён в `src/core/primitives/`)
+- [x] Добавить `Stack.vue` (горизонтальный/вертикальный стек с gap)
+- [x] Добавить `Grid.vue` (CSS grid, responsive)
+- [x] Добавить `Slot.vue` (именованная зона контента с fallback)
+- [x] Добавить `Portal.vue` (рендер в другую часть DOM через teleport)
+- [x] Barrel index `src/core/primitives/index.ts`
+- [x] Импорты исправлены: App.vue, PanelHost.vue, ModalHost.vue, ComponentHost.stories.ts, runtimeClient.ts
+
+### 15.2 Plugin Context API
+
+- [x] Создать `src/core/services/pluginContext.ts` с полным API:
+  - [x] `registerComponent(type, component)` + `unregisterComponent(type)`
+  - [x] `registerEditor(type, loader)` + `unregisterEditor(type)` (returns cleanup fn)
+  - [x] `registerShortcut(entry)` → cleanup
+  - [x] `theme` (read-only) + `registerThemeTokens(tokens)`
+  - [x] `storage` (get/set/remove/keys/clear — scoped localStorage)
+  - [x] `emit/on` (plugin-scoped event system)
+  - [x] `onRuntimeEvent` (runtime event listener)
+  - [x] `entityStore` (list/get/create/update/remove/invalidate)
+  - [x] `animate` (apply/toggleClass/clear)
+  - [x] `router` (open/activePageId)
+  - [x] `modal` (open/menu/panel/tooltip/closeAll)
+  - [x] `clipboard` (readText/writeText/read/write)
+  - [x] `auditlog` (push/undo/redo/canUndo/canRedo)
+  - [x] `toasts` (info/warn/error)
+  - [x] `format` (formatValue/formatNumber/iconView)
+  - [x] `config` (read-only)
+  - [x] Auto cleanup on plugin unload
+
+### 15.3 Theming system
+
+- [x] `src/store/theme.ts` расширен: `registerPluginTokens()`, `getToken()`, `getTokens()`
+- [x] `ThemeProvider.vue` в `src/core/` (inject CSS variables, init themeStore)
+- [x] Auto-generate CSS variables из токенов темы (applyTheme в theme.ts)
+- [x] Плагины расширяют тему через `ctx.registerThemeTokens(tokens)` → cleanup
+- [x] Экспортирован из runtimeClient.ts
+
+### 15.4 Keyboard shortcuts
+
+- [x] `listShortcuts()` — список зарегистрированных шорткатов (для UI настроек)
+- [x] `reassignShortcut(id, newKeys)` — переназначение клавиш
+- [x] `formatCombo(combo)` — форматирование для отображения (mod+k → ⌘K на Mac)
+- [x] Экспортированы из runtimeClient.ts
+
+### 15.5 Event system
+
+- [x] `src/core/services/eventBus.ts` — plugin-scoped event bus
+- [x] `emitPluginEvent(pluginId, name, payload)` — отправка
+- [x] `onPluginEvent(pluginId, name, handler)` → cleanup
+- [x] `clearPluginEventHandlers(pluginId)` — очистка при unload
+- [x] Интегрирован в PluginContext
+
+### 15.6 Animation API
+
+- [x] `src/core/services/animations.ts`
+- [x] `animationApi.apply(el, keyframes, options)` → Animation
+- [x] `animationApi.toggleClass(el, className, duration)` → Promise
+- [x] `animationApi.clear(el)` — очистка
+- [x] Интегрирован в PluginContext
+
+### 15.7 Entity Store access
+
+- [x] `src/core/services/entityStore.ts` — command-backed CRUD API
+- [x] `createEntityStore({entityType, pageId?, transform?, subscribe?})` → EntityStoreApi
+- [x] items/loading/error reactive refs
+- [x] list (load) / create / update / remove / invalidate
+- [x] selected state (select/selectedId/selected)
+- [x] Интегрирован в PluginContext
+
+### 15.8 Router, Modal, Clipboard, AuditLog
+
+- [x] `src/core/services/modal.ts` — overlay system wrapper (open/menu/panel/tooltip/closeAll)
+- [x] `src/core/services/clipboard.ts` — Clipboard API с fallbacks + toasts
+- [x] `src/core/services/auditLog.ts` — in-memory undo/redo stack per plugin
+- [x] Интегрированы в PluginContext
+
+### 15.9 Plugin loading system
+
+- [x] Backend: `PluginLoader.kt` сканирует все директории из `config.plugins.directories` (включая `.plugins/`)
+- [x] Backend: `DependencyResolver.kt` — topological sort по зависимостям из `config.yaml`
+- [x] Backend: `PluginBootstrap.kt` — shared bootstrap для startup + hot-reload
+- [x] Backend: `PluginManager.kt` — dependency-ordered initialization lifecycle
+- [x] Config: `.plugins/` добавлена в `config/application.yaml` directories
+- [x] Config: `.plugins/` добавлена в `.gitignore`
+
+### 15.10 SDK structure
+
+- [x] Kotlin SDK: `Plugin` abstract class, `PluginContext` interface, `PluginId`, `PluginVersion`, `PluginInfo`, `FrontendComponentDefinition` — в модуле `sdk/`
+- [x] TypeScript SDK: `@cutcrft/plugin-sdk` npm package — `sdk-frontend/`
+  - [x] `definePlugin()` helper с type-safe manifest + setup context
+  - [x] TypeScript types: ShortcutEntry, RuntimeEvent, PluginStorage, EntityStoreApi, ModalApi, ClipboardApi, AnimationApi, ThemeApi, RouterApi
+  - [x] Build: tsup (ESM + CJS + DTS) — builds clean
+  - [x] Peer dependency: `@cutcrft/runtime-client`
+
+### 15.11 Plugin structure
+
+- [x] Структура плагина: `config.yaml` (id, version, apiVersion, main, dependencies) + Maven module
+- [x] JAR packaging: clean structure (`com/...Plugin.class + frontend/*.js + frontend/style.css`)
+- [x] Install: copy to `.plugins/` directory (auto-discovered at startup)
+- [x] 7 существующих плагинов следуют структуре (demo, demo-storage, builtin-ui, 4 editor-*)
+
+### 15.12 Storybook
+
+- [~] Существующий Storybook scaffold (`.storybook/*`, scripts) — standalone на :6006
+- [ ] Встроенная `/storybook` route в runtime (low priority, deferred)
+
+### 15.13 Verification
+
+- [x] Все UI-примитивы экспортированы (Container, Page, Section, Layer, Tabs, Toast, Stack, Grid, Slot, Portal)
+- [x] Plugin Context API полностью реализован (core/services/pluginContext.ts + barrel)
+- [x] Theming system работает (ThemeProvider.vue + registerPluginTokens)
+- [x] Keyboard shortcuts расширены (listShortcuts, reassignShortcut, formatCombo)
+- [x] Event system работает (core/services/eventBus.ts)
+- [x] Animation API работает (core/services/animations.ts)
+- [x] Entity Store доступен из плагинов (core/services/entityStore.ts)
+- [x] Router, Modal, Clipboard, AuditLog работают (core/services/)
+- [x] Plugin loading работает (backend: scan .plugins/ + topological sort)
+- [x] SDK structure определена (Kotlin SDK + @cutcrft/plugin-sdk TypeScript)
+- [x] Plugin structure определена (config.yaml + Maven + JAR)
+- [x] Frontend build PASS (vue-tsc + vite — 78 modules, 0 errors)
+- [x] SDK build PASS (tsup — ESM + CJS + DTS)
+- [x] Backend tests PASS (202 tests)
 
 ---
 

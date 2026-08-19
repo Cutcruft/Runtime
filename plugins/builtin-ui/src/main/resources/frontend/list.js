@@ -1,6 +1,7 @@
 import { defineComponent as B, ref as p, computed as U, openBlock as u, createElementBlock as i, unref as t, normalizeStyle as H, normalizeClass as f, toDisplayString as v, Fragment as m, renderList as A, createVNode as O, createElementVNode as Q, createCommentVNode as E } from "vue";
-import { i18nStore as j, useContainerQuery as x, useCfg as G, useData as J, ComponentHost as M, formatValue as N, runAction as P, findAction as R } from "@cutcrft/runtime-client";
-import { _ as W } from "./vendor.js";
+import { C as j } from "./vendor.js";
+import { i18nStore as x, useContainerQuery as G, useCfg as J, useData as M, formatValue as N, runAction as P, findAction as R } from "@cutcrft/runtime-client";
+import { _ as W } from "./vendor2.js";
 const X = ["title"], Y = {
   key: 0,
   class: "ui-list__state"
@@ -26,11 +27,11 @@ const X = ["title"], Y = {
     context: {}
   },
   setup(V) {
-    const d = V, y = j.t, D = p(null), w = x(D), e = G(d.config, { labelField: "name", itemKey: "id" }), { value: b, error: h, loading: k } = J(
+    const d = V, y = x.t, b = p(null), w = G(b), e = J(d.config, { labelField: "name", itemKey: "id" }), { value: D, error: h, loading: k } = M(
       () => e.value.data,
       () => d.context ?? {}
     ), c = U(
-      () => Array.isArray(b.value) ? b.value : []
+      () => Array.isArray(D.value) ? D.value : []
     ), s = p(null), _ = p(null);
     function I(o) {
       return e.value.labelField ? N(o[e.value.labelField]) : "";
@@ -45,10 +46,10 @@ const X = ["title"], Y = {
     function T(o, a) {
       e.value.sortable && (s.value = o, a.dataTransfer && (a.dataTransfer.effectAllowed = "move", a.dataTransfer.setData("text/plain", String(o))));
     }
-    function F(o, a) {
+    function C(o, a) {
       !e.value.sortable || s.value === null || (a.preventDefault(), a.dataTransfer && (a.dataTransfer.dropEffect = "move"), _.value = o);
     }
-    function S(o) {
+    function F(o) {
       if (!e.value.sortable || s.value === null) return;
       const a = s.value, r = o;
       if (s.value = null, _.value = null, a === r) return;
@@ -60,12 +61,12 @@ const X = ["title"], Y = {
         payload: { from: a, to: r, row: l, ids: $ }
       });
     }
-    function C() {
+    function S() {
       s.value = null, _.value = null;
     }
     return (o, a) => (u(), i("div", {
       ref_key: "root",
-      ref: D,
+      ref: b,
       class: f(["ui-list", [t(e).className, `ui-list--cq-${t(w)}`]]),
       style: H(t(e).style),
       title: t(e).tooltip
@@ -80,11 +81,11 @@ const X = ["title"], Y = {
               "ui-list__drag--over": t(e).sortable && _.value === l && s.value !== null && s.value !== l
             }]),
             onDragstart: (n) => T(l, n),
-            onDragover: (n) => F(l, n),
-            onDrop: (n) => S(l),
-            onDragend: C
+            onDragover: (n) => C(l, n),
+            onDrop: (n) => F(l),
+            onDragend: S
           }, [
-            O(t(M), {
+            O(j, {
               component: t(e).itemTemplate,
               context: { ...d.context ?? {}, row: r }
             }, null, 8, ["component", "context"])
@@ -98,9 +99,9 @@ const X = ["title"], Y = {
               "ui-list__row--over": t(e).sortable && _.value === l && s.value !== null && s.value !== l
             }]),
             onDragstart: (n) => T(l, n),
-            onDragover: (n) => F(l, n),
-            onDrop: (n) => S(l),
-            onDragend: C
+            onDragover: (n) => C(l, n),
+            onDrop: (n) => F(l),
+            onDragend: S
           }, [
             Q("span", oe, v(I(r)), 1),
             t(e).valueField ? (u(), i("span", re, v(K(r)), 1)) : E("", !0)
@@ -110,7 +111,7 @@ const X = ["title"], Y = {
       ], 64))
     ], 14, X));
   }
-}), _e = /* @__PURE__ */ W(se, [["__scopeId", "data-v-48753b79"]]);
+}), ve = /* @__PURE__ */ W(se, [["__scopeId", "data-v-f4bb41ee"]]);
 export {
-  _e as default
+  ve as default
 };

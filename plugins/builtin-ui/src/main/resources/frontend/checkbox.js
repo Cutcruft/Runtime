@@ -1,6 +1,6 @@
-import { defineComponent as i, ref as d, openBlock as r, createElementBlock as u, unref as t, normalizeStyle as p, normalizeClass as f, createElementVNode as a, toDisplayString as _ } from "vue";
-import { useCfg as m, runAction as h, findAction as k } from "@cutcrft/runtime-client";
-import { _ as b } from "./vendor.js";
+import { defineComponent as i, ref as r, openBlock as d, createElementBlock as u, unref as t, normalizeStyle as p, normalizeClass as f, createElementVNode as a, toDisplayString as _ } from "vue";
+import { useCfg as m, runAction as h, findAction as b } from "@cutcrft/runtime-client";
+import { _ as k } from "./vendor2.js";
 const x = ["title"], g = ["checked", "disabled"], v = /* @__PURE__ */ i({
   __name: "UiCheckbox",
   props: {
@@ -8,28 +8,28 @@ const x = ["title"], g = ["checked", "disabled"], v = /* @__PURE__ */ i({
     context: {}
   },
   setup(l) {
-    const c = l, e = m(c.config, {}), o = d(e.value.defaultValue ?? !1);
+    const o = l, e = m(o.config, {}), c = r(e.value.defaultValue ?? !1);
     function s(n) {
-      o.value = n.target.checked, h(k(e.value.actions, "change"), {
-        ...c.context ?? {},
-        payload: { value: o.value }
+      c.value = n.target.checked, h(b(e.value.actions, "change"), {
+        ...o.context ?? {},
+        payload: { value: c.value }
       });
     }
-    return (n, y) => (r(), u("label", {
+    return (n, y) => (d(), u("label", {
       class: f(["ui-checkbox", t(e).className]),
       style: p(t(e).style),
       title: t(e).tooltip
     }, [
       a("input", {
         type: "checkbox",
-        checked: o.value,
+        checked: c.value,
         disabled: t(e).disabled,
         onChange: s
       }, null, 40, g),
       a("span", null, _(t(e).label), 1)
     ], 14, x));
   }
-}), B = /* @__PURE__ */ b(v, [["__scopeId", "data-v-e0ddfde7"]]);
+}), B = /* @__PURE__ */ k(v, [["__scopeId", "data-v-cb12c9bc"]]);
 export {
   B as default
 };

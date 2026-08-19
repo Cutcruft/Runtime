@@ -1,6 +1,6 @@
 import { defineComponent as f, computed as r, openBlock as n, createElementBlock as u, unref as s, normalizeStyle as i, normalizeClass as v, createElementVNode as c, toDisplayString as d, createCommentVNode as g } from "vue";
 import { useCfg as y, useData as b } from "@cutcrft/runtime-client";
-import { _ as h } from "./vendor.js";
+import { _ as h } from "./vendor2.js";
 const x = ["title"], N = { class: "ui-progress__bar" }, C = {
   key: 0,
   class: "ui-progress__label"
@@ -34,7 +34,7 @@ const x = ["title"], N = { class: "ui-progress__bar" }, C = {
       s(e).showLabel ? (n(), u("span", C, d(_.value), 1)) : g("", !0)
     ], 14, x));
   }
-}), $ = /* @__PURE__ */ h(k, [["__scopeId", "data-v-afeb2262"]]);
+}), $ = /* @__PURE__ */ h(k, [["__scopeId", "data-v-be8219f6"]]);
 export {
   $ as default
 };

@@ -1,10 +1,33 @@
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { configStore } from './config'
+import { globalSingleton } from '../utils/globalSingleton'
 
-const activePageId = ref<string | null>(null)
-const openPages = ref<string[]>([])
-const backStack = ref<string[]>([])
-const forwardStack = ref<string[]>([])
+const STORAGE_KEY = 'cc.openPages'
+const STORAGE_ACTIVE = 'cc.activePage'
+
+const { activePageId, openPages, backStack, forwardStack } = globalSingleton('__cc_page', () => ({
+  activePageId: ref<string | null>(null),
+  openPages: ref<string[]>([]),
+  backStack: ref<string[]>([]),
+  forwardStack: ref<string[]>([])
+}))
+
+function persistTabs(): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(openPages.value))
+    if (activePageId.value) localStorage.setItem(STORAGE_ACTIVE, activePageId.value)
+    else localStorage.removeItem(STORAGE_ACTIVE)
+  } catch { /* localStorage unavailable */ }
+}
+
+function loadPersistedTabs(): { openPages: string[]; activePageId: string | null } {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    const pages = raw ? JSON.parse(raw) as string[] : []
+    const active = localStorage.getItem(STORAGE_ACTIVE)
+    return { openPages: pages, activePageId: active }
+  } catch { return { openPages: [], activePageId: null } }
+}
 
 function existingIndex(pageId: string): number {
   return openPages.value.indexOf(pageId)
@@ -25,8 +48,20 @@ export const pageStore = {
   },
 
   init(): void {
-    const landing = configStore.app?.landingPageId
-    if (landing) this.openPage(landing)
+    const persisted = loadPersistedTabs()
+    if (persisted.openPages.length > 0) {
+      const validPageIds = new Set(configStore.pages.map(p => p.id))
+      openPages.value = persisted.openPages.filter(id => validPageIds.has(id))
+      if (persisted.activePageId && validPageIds.has(persisted.activePageId)) {
+        activePageId.value = persisted.activePageId
+      } else if (openPages.value.length > 0) {
+        activePageId.value = openPages.value[0]
+      }
+      persistTabs()
+    } else {
+      const landing = configStore.app?.landingPageId
+      if (landing) this.openPage(landing)
+    }
   },
 
   /** Set the active page from a URL deep-link / browser back-forward without touching history stacks. */
@@ -88,3 +123,5 @@ export const pageStore = {
     if (existingIndex(next) === -1) openPages.value.push(next)
   }
 }
+
+watch([activePageId, openPages], persistTabs, { deep: true })

@@ -14,6 +14,7 @@ import type {
   OverlayPlacement,
   OverlayTriggerSpec
 } from '../protocol/componentSpec'
+import { globalSingleton } from '../utils/globalSingleton'
 
 export interface OverlayAnchor {
   x: number
@@ -42,16 +43,17 @@ interface OverlayState {
   overlays: OverlayInstance[]
 }
 
-const state = reactive<OverlayState>({ overlays: [] })
+const { state, overlayState } = globalSingleton('__cc_overlay', () => ({
+  state: reactive<OverlayState>({ overlays: [] }),
+  overlayState: { uidCounter: 0 }
+}))
 
-let uidCounter = 0
-
-const definitions = new Map<string, OverlayDefinition>()
-const triggers: OverlayTriggerSpec[] = []
+const definitions = globalSingleton('__cc_overlay_defs', () => new Map<string, OverlayDefinition>())
+const triggers = globalSingleton('__cc_overlay_triggers', () => [] as OverlayTriggerSpec[])
 
 function nextUid(): number {
-  uidCounter += 1
-  return uidCounter
+  overlayState.uidCounter += 1
+  return overlayState.uidCounter
 }
 
 const OVERLAY_KINDS: OverlayKind[] = ['menu', 'modal', 'panel', 'tooltip']

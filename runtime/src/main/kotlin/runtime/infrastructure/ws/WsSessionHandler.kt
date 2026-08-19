@@ -4,6 +4,7 @@ import io.ktor.websocket.DefaultWebSocketSession
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -52,6 +53,8 @@ class WsSessionHandler(
                             if (result is HandleResult.ProjectBound) {
                                 boundProjectId = result.projectId
                             }
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (e: Exception) {
                             sendErrorLocked(
                                 session, sendMutex, envelope,
@@ -75,6 +78,8 @@ class WsSessionHandler(
             }
         } catch (e: ClosedReceiveChannelException) {
             // Session closed normally
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             sendErrorLocked(
                 session, sendMutex, null,

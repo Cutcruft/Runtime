@@ -1,13 +1,14 @@
-.PHONY: frontend backend sdk plugin build dev clean
+.PHONY: frontend backend sdk plugin plugins build dev clean
 
 FRONTEND_DIR := frontend
 BACKEND_STATIC := runtime/src/main/resources/static
 SDK_POM := sdk/pom.xml
 RUNTIME_POM := runtime/pom.xml
 PLUGIN_PROJECT := demo-plugin
-PLUGIN_DIR := plugins/demo
+PLUGIN_DIR := .plugins/demo
 STORAGE_PROJECT := demo-storage-plugin
-STORAGE_DIR := plugins/demo-storage
+STORAGE_DIR := .plugins/demo-storage
+PLUGINS_DIR := .plugins
 
 frontend:
 	cd $(FRONTEND_DIR) && (npm ci || npm install) && npm run build
@@ -29,7 +30,22 @@ plugin: sdk
 	cp $(STORAGE_PROJECT)/config.yaml $(STORAGE_DIR)/
 	cp $(STORAGE_PROJECT)/target/demo-storage.jar $(STORAGE_DIR)/
 
-build: frontend plugin
+plugins: sdk plugin
+	@for d in builtin-ui editor-canvas editor-diagram editor-richtext editor-scene3d; do \
+		pom="$(PLUGINS_DIR)/$$d/pom.xml"; \
+		if [ -f "$$pom" ]; then \
+			echo "Building $$d..."; \
+			mvn -f "$$pom" -q package -DskipTests 2>/dev/null; \
+			mkdir -p "$(PLUGINS_DIR)/$$d"; \
+			jar=$$(ls "$(PLUGINS_DIR)/$$d/target/"*.jar 2>/dev/null | head -1); \
+			if [ -n "$$jar" ]; then \
+				cp "$$jar" "$(PLUGINS_DIR)/$$d/$$(basename $$jar)"; \
+				echo "  -> installed $$(basename $$jar)"; \
+			fi; \
+		fi; \
+	done
+
+build: frontend plugins
 	mkdir -p $(BACKEND_STATIC)
 	cp -r $(FRONTEND_DIR)/dist/* $(BACKEND_STATIC)/
 	mvn package -DskipTests
@@ -37,6 +53,7 @@ build: frontend plugin
 dev:
 	mkdir -p $(BACKEND_STATIC)
 	cp -r $(FRONTEND_DIR)/dist/* $(BACKEND_STATIC)/ 2>/dev/null || true
+	$(MAKE) plugins
 	mvn -q install -DskipTests
 	mvn -f $(RUNTIME_POM) exec:java -Dexec.mainClass=runtime.MainKt -Dexec.classpathScope=runtime
 

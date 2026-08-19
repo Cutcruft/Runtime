@@ -17,6 +17,9 @@ target/
 plugins/*/target/
 plugins/*/*.jar
 
+# Assembled plugin JARs (runtime loads from here)
+.plugins/
+
 # Frontend
 frontend/node_modules/
 frontend/dist/

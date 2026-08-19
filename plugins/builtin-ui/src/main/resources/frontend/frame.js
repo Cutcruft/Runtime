@@ -1,6 +1,6 @@
 import { defineComponent as l, computed as p, openBlock as o, createElementBlock as n, unref as s, normalizeClass as d } from "vue";
 import { useCfg as m } from "@cutcrft/runtime-client";
-import { _ as u } from "./vendor.js";
+import { _ as u } from "./vendor2.js";
 const f = ["src", "title", "width", "height", "sandbox", "allow"], h = {
   key: 1,
   class: "ui-frame--empty"
@@ -34,7 +34,7 @@ const f = ["src", "title", "width", "height", "sandbox", "allow"], h = {
       loading: "lazy"
     }, null, 10, f)) : (o(), n("span", h, "frame: missing src"));
   }
-}), w = /* @__PURE__ */ u(g, [["__scopeId", "data-v-d64abb2a"]]);
+}), w = /* @__PURE__ */ u(g, [["__scopeId", "data-v-de7e7d74"]]);
 export {
   w as default
 };

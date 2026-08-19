@@ -1,6 +1,6 @@
-import { defineComponent as ve, ref as g, computed as r, watch as be, openBlock as o, createElementBlock as s, unref as l, normalizeStyle as q, normalizeClass as x, withDirectives as W, vModelText as _e, createCommentVNode as b, toDisplayString as i, createElementVNode as _, Fragment as S, renderList as R, createTextVNode as me, withModifiers as X, vModelSelect as fe } from "vue";
+import { defineComponent as ve, ref as g, computed as r, watch as be, openBlock as o, createElementBlock as s, unref as l, normalizeStyle as q, normalizeClass as x, withDirectives as W, vModelText as _e, createCommentVNode as b, toDisplayString as i, createElementVNode as _, Fragment as S, renderList as R, createTextVNode as fe, withModifiers as X, vModelSelect as me } from "vue";
 import { i18nStore as ge, useContainerQuery as pe, useCfg as ye, useData as he, formatValue as F, findAction as $, runAction as z, sessionStore as Y, resolveParams as ke } from "@cutcrft/runtime-client";
-import { _ as Ce } from "./vendor.js";
+import { _ as Ce } from "./vendor2.js";
 const we = ["title"], xe = {
   key: 0,
   class: "ui-table__toolbar"
@@ -39,7 +39,7 @@ const we = ["title"], xe = {
   },
   setup(Z) {
     var H;
-    const d = Z, f = ge.t, K = g(null), ee = pe(K), a = ye(d.config, {
+    const d = Z, m = ge.t, K = g(null), ee = pe(K), a = ye(d.config, {
       showRefresh: !0,
       showRowCount: !0,
       searchable: !1,
@@ -91,13 +91,13 @@ const we = ["title"], xe = {
     ), B = r(() => O.value !== null), C = g(((H = O.value) == null ? void 0 : H.pageSize) ?? 10), ne = r(() => {
       var e;
       return ((e = O.value) == null ? void 0 : e.pageSizeOptions) ?? [10, 25, 50];
-    }), m = g(1), w = r(() => B.value ? Math.max(1, Math.ceil(N.value.length / C.value)) : 1), L = r(() => {
+    }), f = g(1), w = r(() => B.value ? Math.max(1, Math.ceil(N.value.length / C.value)) : 1), L = r(() => {
       if (!B.value) return N.value;
-      const e = (m.value - 1) * C.value;
+      const e = (f.value - 1) * C.value;
       return N.value.slice(e, e + C.value);
     });
     be(w, () => {
-      m.value > w.value && (m.value = Math.max(1, w.value));
+      f.value > w.value && (f.value = Math.max(1, w.value));
     });
     const T = r(() => {
       var n;
@@ -175,18 +175,18 @@ const we = ["title"], xe = {
           "onUpdate:modelValue": n[0] || (n[0] = (t) => V.value = t),
           class: "ui-table__search",
           type: "search",
-          placeholder: l(f)("core.table.search")
+          placeholder: l(m)("core.table.search")
         }, null, 8, Se)), [
           [_e, V.value]
         ]) : b("", !0),
-        l(a).showRowCount ? (o(), s("span", Re, i(l(f)("core.table.rows", { count: p.value.length })), 1)) : b("", !0),
+        l(a).showRowCount ? (o(), s("span", Re, i(l(m)("core.table.rows", { count: p.value.length })), 1)) : b("", !0),
         l(a).showRefresh ? (o(), s("button", {
           key: 2,
           class: "ui-button ui-button--small",
           disabled: l(M),
           onClick: n[1] || (n[1] = //@ts-ignore
           (...t) => l(y) && l(y)(...t))
-        }, i(l(M) ? l(f)("core.button.loading") : l(f)("core.table.refresh")), 9, Ae)) : b("", !0)
+        }, i(l(M) ? l(m)("core.button.loading") : l(m)("core.table.refresh")), 9, Ae)) : b("", !0)
       ])) : b("", !0),
       l(I) ? (o(), s("p", De, i(l(I)), 1)) : (o(), s("table", Te, [
         _("thead", null, [
@@ -198,7 +198,7 @@ const we = ["title"], xe = {
               class: x({ "ui-table__sortable": Q(t) }),
               onClick: (c) => Q(t) && te(t.key)
             }, [
-              me(i(oe(t)) + " ", 1),
+              fe(i(oe(t)) + " ", 1),
               h.value === t.key ? (o(), s("span", Me, i(k.value === "asc" ? "↑" : "↓"), 1)) : b("", !0)
             ], 14, ze))), 128)),
             T.value > 0 ? (o(), s("th", Ve)) : b("", !0)
@@ -209,12 +209,12 @@ const we = ["title"], xe = {
             _("td", {
               colspan: D.value.length + (l(a).selectable ? 1 : 0) + (T.value > 0 ? 1 : 0),
               class: "ui-table__state"
-            }, i(l(f)("core.button.loading")), 9, Oe)
+            }, i(l(m)("core.button.loading")), 9, Oe)
           ])) : L.value.length === 0 ? (o(), s("tr", Be, [
             _("td", {
               colspan: D.value.length + (l(a).selectable ? 1 : 0) + (T.value > 0 ? 1 : 0),
               class: "ui-table__state"
-            }, i(l(a).emptyText ?? l(f)("core.table.empty")), 9, Le)
+            }, i(l(a).emptyText ?? l(m)("core.table.empty")), 9, Le)
           ])) : b("", !0),
           (o(!0), s(S, null, R(L.value, (t, c) => {
             var v;
@@ -261,7 +261,7 @@ const we = ["title"], xe = {
                   key: 0,
                   class: "ui-button ui-button--small ui-button--danger",
                   onClick: (u) => re(t)
-                }, i(l(f)("core.table.delete")), 9, Pe)) : b("", !0)
+                }, i(l(m)("core.table.delete")), 9, Pe)) : b("", !0)
               ])) : b("", !0)
             ], 8, Ue);
           }), 128))
@@ -270,14 +270,14 @@ const we = ["title"], xe = {
       B.value ? (o(), s("div", Ie, [
         _("button", {
           class: "ui-button ui-button--small",
-          disabled: m.value <= 1,
-          onClick: n[3] || (n[3] = (t) => m.value -= 1)
+          disabled: f.value <= 1,
+          onClick: n[3] || (n[3] = (t) => f.value -= 1)
         }, "‹", 8, Je),
-        _("span", Qe, i(m.value) + " / " + i(w.value), 1),
+        _("span", Qe, i(f.value) + " / " + i(w.value), 1),
         _("button", {
           class: "ui-button ui-button--small",
-          disabled: m.value >= w.value,
-          onClick: n[4] || (n[4] = (t) => m.value += 1)
+          disabled: f.value >= w.value,
+          onClick: n[4] || (n[4] = (t) => f.value += 1)
         }, "›", 8, Ge),
         W(_("select", {
           "onUpdate:modelValue": n[5] || (n[5] = (t) => C.value = t),
@@ -289,7 +289,7 @@ const we = ["title"], xe = {
           }, i(t), 9, He))), 128))
         ], 512), [
           [
-            fe,
+            me,
             C.value,
             void 0,
             { number: !0 }
@@ -298,7 +298,7 @@ const we = ["title"], xe = {
       ])) : b("", !0)
     ], 14, we));
   }
-}), et = /* @__PURE__ */ Ce(We, [["__scopeId", "data-v-13cc7319"]]);
+}), et = /* @__PURE__ */ Ce(We, [["__scopeId", "data-v-8478b3ff"]]);
 export {
   et as default
 };

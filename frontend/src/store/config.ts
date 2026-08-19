@@ -1,9 +1,11 @@
 import { ref } from 'vue'
 import type { WorkspaceConfig } from '../protocol/types'
+import { globalSingleton } from '../utils/globalSingleton'
 
-const config = ref<WorkspaceConfig | null>(null)
-let pollTimer: ReturnType<typeof setInterval> | null = null
-let lastConfigJson = ''
+const { config, pollState } = globalSingleton('__cc_cfg', () => ({
+  config: ref<WorkspaceConfig | null>(null),
+  pollState: { pollTimer: null as ReturnType<typeof setInterval> | null, lastConfigJson: '' }
+}))
 
 export const configStore = {
   get value(): WorkspaceConfig | null {
@@ -70,14 +72,14 @@ export const configStore = {
     }
     const data = (await response.json()) as WorkspaceConfig
     config.value = data
-    lastConfigJson = JSON.stringify(data)
+    pollState.lastConfigJson = JSON.stringify(data)
     this.startPollingIfNeeded()
   },
   startPollingIfNeeded() {
-    if (pollTimer) return
+    if (pollState.pollTimer) return
     const dev = config.value?.dev
     if (!dev?.enabled || dev.pollIntervalMs <= 0) return
-    pollTimer = setInterval(() => {
+    pollState.pollTimer = setInterval(() => {
       this.pollForChanges()
     }, dev.pollIntervalMs)
   },
@@ -86,20 +88,20 @@ export const configStore = {
       const response = await fetch('/config')
       if (!response.ok) return
       const json = await response.text()
-      if (json !== lastConfigJson) {
+      if (json !== pollState.lastConfigJson) {
         console.log('[dev] Config changed, reloading...')
         const data = JSON.parse(json) as WorkspaceConfig
         config.value = data
-        lastConfigJson = json
+        pollState.lastConfigJson = json
       }
     } catch {
       // Silently ignore polling errors
     }
   },
   stopPolling() {
-    if (pollTimer) {
-      clearInterval(pollTimer)
-      pollTimer = null
+    if (pollState.pollTimer) {
+      clearInterval(pollState.pollTimer)
+      pollState.pollTimer = null
     }
   }
 }

@@ -1,40 +1,23 @@
-import { defineComponent as l, computed as p, openBlock as o, createElementBlock as n, unref as s, normalizeClass as d } from "vue";
-import { useCfg as m } from "@cutcrft/runtime-client";
-import { _ as u } from "./vendor2.js";
-const f = ["src", "title", "width", "height", "sandbox", "allow"], h = {
-  key: 1,
-  class: "ui-frame--empty"
-}, g = /* @__PURE__ */ l({
-  __name: "UiFrame",
-  props: {
-    config: {},
-    context: {}
-  },
-  setup(i) {
-    const t = m(i.config, { src: "" }), a = p(() => {
-      const e = t.value.src;
-      if (e.startsWith("page:")) {
-        const r = e.slice(5);
-        return `/embed?page=${encodeURIComponent(r)}`;
-      }
-      return e.startsWith("asset:") ? `/plugin-assets/${e.slice(6)}` : e;
-    });
-    function c(e) {
-      return e.startsWith("http") || e.startsWith("https");
+import { jsx as l } from "preact/jsx-runtime";
+import { useCfg as o } from "@cutcrft/runtime-client";
+function u(t) {
+  const e = o(t.config, { src: "", height: "100%" }), a = e.value.src, s = {
+    width: e.value.width ?? "100%",
+    height: e.value.height ?? "100%",
+    border: "none",
+    ...e.value.style ?? {}
+  };
+  return /* @__PURE__ */ l(
+    "iframe",
+    {
+      class: `ui-frame${e.value.className ? " " + e.value.className : ""}`,
+      src: a,
+      title: e.value.title ?? e.value.tooltip,
+      style: s,
+      sandbox: e.value.sandbox
     }
-    return (e, r) => a.value ? (o(), n("iframe", {
-      key: 0,
-      class: d(["ui-frame", s(t).className]),
-      src: a.value,
-      title: s(t).title ?? "Embedded frame",
-      width: s(t).width,
-      height: s(t).height,
-      sandbox: s(t).sandbox,
-      allow: c(a.value) ? void 0 : "clipboard-read; clipboard-write",
-      loading: "lazy"
-    }, null, 10, f)) : (o(), n("span", h, "frame: missing src"));
-  }
-}), w = /* @__PURE__ */ u(g, [["__scopeId", "data-v-de7e7d74"]]);
+  );
+}
 export {
-  w as default
+  u as default
 };

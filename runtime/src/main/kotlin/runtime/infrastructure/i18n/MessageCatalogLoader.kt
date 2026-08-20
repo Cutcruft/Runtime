@@ -23,6 +23,17 @@ class MessageCatalogLoader {
         val jarFile = File(jarPath)
         if (!jarFile.exists()) return emptyMap()
         val result = mutableMapOf<String, Map<String, String>>()
+        if (jarFile.isDirectory) {
+            // Unpacked plugin directory (dev mode): read messages/<locale>.json from disk.
+            val messagesDir = File(jarFile, "messages")
+            messagesDir.listFiles { f -> f.isFile && f.name.endsWith(".json") }.orEmpty().forEach { file ->
+                val locale = file.name.removeSuffix(".json")
+                if (localeRegex.matches(locale)) {
+                    runCatching { result[locale] = flatten(parse(file.readText()), prefix = pluginId) }
+                }
+            }
+            return result
+        }
         JarFile(jarFile).use { jar ->
             jar.entries().asSequence().forEach { entry ->
                 if (entry.isDirectory) return@forEach

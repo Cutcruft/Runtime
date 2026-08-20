@@ -45,6 +45,7 @@
   "tasks.col.board": "Доска",
   "tasks.complete": "Завершить",
   "tasks.complete.confirm": "Отметить задачу выполненной?",
+  "tasks.reopen": "Вернуть",
   "tasks.create.submit": "Создать задачу",
   "tasks.field.title": "Заголовок",
   "tasks.field.board": "Доска",

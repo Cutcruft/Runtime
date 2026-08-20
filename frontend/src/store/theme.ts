@@ -1,6 +1,7 @@
-import { ref } from 'vue'
+import { signal } from '@preact/signals'
 import { configStore } from './config'
 import { globalSingleton } from '../utils/globalSingleton'
+import type { AppTheme } from '../protocol/types'
 
 export type ThemeMode = 'auto' | 'light' | 'dark'
 
@@ -8,61 +9,45 @@ const STORAGE_KEY = 'cc.theme'
 const media = window.matchMedia('(prefers-color-scheme: dark)')
 
 const { mode, pluginTokens } = globalSingleton('__cc_theme', () => ({
-  mode: ref<ThemeMode>(loadMode()),
+  mode: signal<ThemeMode>(loadMode()),
   pluginTokens: new Map<string, Record<string, string>>()
 }))
 
-const LIGHT_TOKENS: Record<string, string> = {
-  'color-bg': '#f5f6f8',
-  'color-surface': '#ffffff',
-  'color-text': '#1c1c1c',
-  'color-muted': '#666666',
-  'color-border': '#e2e2e2',
-  'color-primary': '#0066cc',
-  'color-primary-hover': '#0052a3',
-  'color-danger': '#b00020',
-  'color-success': '#1b7f3b',
-  'color-warning': '#b26a00',
-  'color-info': '#0066cc',
-  'radius-sm': '6px',
-  'radius': '8px',
-  'radius-lg': '12px',
-  'shadow': '0 2px 8px rgba(0, 0, 0, 0.12)',
-  'space-xs': '0.25rem',
-  'space-sm': '0.5rem',
-  'space': '0.75rem',
-  'space-lg': '1.25rem',
-  'font-size-sm': '0.75rem',
-  'font-size': '0.875rem',
-  'font-size-lg': '1rem',
-  'font-size-xl': '1.25rem'
+/**
+ * Fallback palette used when the workspace config does not declare a typed theme.
+ * Keyed by resolved mode (light/dark).
+ */
+const DEFAULT_PALETTES: Record<'light' | 'dark', Record<string, string>> = {
+  light: {
+    'color-bg': '#f5f6f8',
+    'color-surface': '#ffffff',
+    'color-text': '#1c1c1c',
+    'color-muted': '#666666',
+    'color-border': '#e2e2e2',
+    'color-primary': '#0066cc',
+    'color-primary-hover': '#0052a3',
+    'color-danger': '#b00020',
+    'color-success': '#1b7f3b',
+    'color-warning': '#b26a00',
+    'color-info': '#0066cc'
+  },
+  dark: {
+    'color-bg': '#16181d',
+    'color-surface': '#1f2329',
+    'color-text': '#e8e8e8',
+    'color-muted': '#9aa0a6',
+    'color-border': '#343a42',
+    'color-primary': '#4d9fff',
+    'color-primary-hover': '#6fb1ff',
+    'color-danger': '#ff6b6b',
+    'color-success': '#4cd07d',
+    'color-warning': '#ffc24d',
+    'color-info': '#4d9fff'
+  }
 }
 
-const DARK_TOKENS: Record<string, string> = {
-  'color-bg': '#16181d',
-  'color-surface': '#1f2329',
-  'color-text': '#e8e8e8',
-  'color-muted': '#9aa0a6',
-  'color-border': '#343a42',
-  'color-primary': '#4d9fff',
-  'color-primary-hover': '#6fb1ff',
-  'color-danger': '#ff6b6b',
-  'color-success': '#4cd07d',
-  'color-warning': '#ffc24d',
-  'color-info': '#4d9fff',
-  'radius-sm': '6px',
-  'radius': '8px',
-  'radius-lg': '12px',
-  'shadow': '0 2px 8px rgba(0, 0, 0, 0.4)',
-  'space-xs': '0.25rem',
-  'space-sm': '0.5rem',
-  'space': '0.75rem',
-  'space-lg': '1.25rem',
-  'font-size-sm': '0.75rem',
-  'font-size': '0.875rem',
-  'font-size-lg': '1rem',
-  'font-size-xl': '1.25rem'
-}
+const DEFAULT_RADII: Record<string, string> = { sm: '6px', md: '8px', lg: '12px', xl: '16px' }
+const DEFAULT_SPACING: Record<string, string> = { xs: '4px', sm: '8px', md: '12px', lg: '20px', xl: '32px' }
 
 function loadMode(): ThemeMode {
   const stored = localStorage.getItem(STORAGE_KEY)
@@ -70,24 +55,87 @@ function loadMode(): ThemeMode {
   return 'auto'
 }
 
-function resolveMode(mode: ThemeMode): 'light' | 'dark' {
-  return mode === 'auto' ? (media.matches ? 'dark' : 'light') : mode
+function resolveMode(m: ThemeMode): 'light' | 'dark' {
+  return m === 'auto' ? (media.matches ? 'dark' : 'light') : m
+}
+
+/** Flattens the typed workspace theme into flat --rt-* token values. */
+function flattenTypedTheme(effective: 'light' | 'dark'): Record<string, string> {
+  const theme: AppTheme | undefined = configStore.theme
+  if (!theme) return {}
+
+  const tokens: Record<string, string> = {}
+
+  // Palette: prefer typed semantic roles, fall back to raw tokens / defaults.
+  const palette = theme.palette?.[effective]
+  if (palette) {
+    const map: Record<string, string> = {
+      'color-bg': palette.bg,
+      'color-surface': palette.surface,
+      'color-text': palette.text,
+      'color-muted': palette.muted,
+      'color-border': palette.border,
+      'color-primary': palette.primary,
+      'color-primary-hover': palette.primaryHover,
+      'color-danger': palette.danger,
+      'color-success': palette.success,
+      'color-warning': palette.warning,
+      'color-info': palette.info
+    }
+    Object.assign(tokens, map)
+  } else {
+    // Legacy: use flat tokens with .light/.dark suffix semantics, else defaults.
+    Object.assign(tokens, DEFAULT_PALETTES[effective])
+    for (const [name, value] of Object.entries(theme.tokens ?? {})) {
+      if (name.endsWith('.light') && effective !== 'light') continue
+      if (name.endsWith('.dark') && effective !== 'dark') continue
+      tokens[name.replace(/\.(light|dark)$/, '')] = value
+    }
+  }
+
+  // Typography
+  const typography = theme.typography ?? {}
+  if (typography.fontFamily) tokens['font-family'] = typography.fontFamily
+  if (typography.headingFont) tokens['heading-font'] = typography.headingFont
+  if (typography.monospaceFont) tokens['monospace-font'] = typography.monospaceFont
+  if (typography.baseSize) tokens['font-size'] = typography.baseSize
+  if (typography.scale) {
+    for (const [name, value] of Object.entries(typography.scale)) tokens[`font-size-${name}`] = value
+  }
+
+  // Radii
+  const radii = theme.radii ?? {}
+  for (const [name, value] of Object.entries(DEFAULT_RADII)) tokens[`radius-${name}`] = radii[name as keyof typeof radii] ?? value
+
+  // Spacing
+  const spacing = theme.spacing ?? {}
+  for (const [name, value] of Object.entries(DEFAULT_SPACING)) tokens[`space-${name}`] = spacing[name as keyof typeof spacing] ?? value
+
+  // Motion
+  const motion = theme.motion ?? {}
+  if (motion.duration) {
+    for (const [name, value] of Object.entries(motion.duration)) tokens[`duration-${name}`] = value
+  }
+  if (motion.easing) {
+    for (const [name, value] of Object.entries(motion.easing)) tokens[`easing-${name}`] = value
+  }
+
+  // Raw token overrides (highest priority within config).
+  for (const [name, value] of Object.entries(theme.tokens ?? {})) {
+    if (name.endsWith('.light') && effective !== 'light') continue
+    if (name.endsWith('.dark') && effective !== 'dark') continue
+    tokens[name.replace(/\.(light|dark)$/, '')] = value
+  }
+
+  return tokens
 }
 
 export function applyTheme(): void {
   const effective = resolveMode(mode.value)
   const root = document.documentElement
   root.dataset.theme = effective
-  const tokens = {
-    ...(effective === 'dark' ? DARK_TOKENS : LIGHT_TOKENS)
-  }
-  // Layer 1: workspace config tokens
-  for (const [name, value] of Object.entries(configStore.theme?.tokens ?? {})) {
-    if (name.endsWith('.light') && effective !== 'light') continue
-    if (name.endsWith('.dark') && effective !== 'dark') continue
-    tokens[name.replace(/\.(light|dark)$/, '')] = value
-  }
-  // Layer 2: plugin-contributed tokens (highest priority)
+  const tokens = flattenTypedTheme(effective)
+  // Plugin-contributed tokens (highest priority).
   for (const [, pluginTokenMap] of pluginTokens) {
     for (const [name, value] of Object.entries(pluginTokenMap)) {
       tokens[name] = value

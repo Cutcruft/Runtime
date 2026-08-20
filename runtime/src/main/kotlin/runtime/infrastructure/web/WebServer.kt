@@ -8,30 +8,21 @@ import io.ktor.server.routing.routing
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.DefaultWebSocketSession
-import runtime.application.session.CommandDispatchService
+import runtime.application.workspace.WorkspaceRegistry
 import runtime.domain.models.Messages
 import runtime.domain.models.RuntimeConfig
-import runtime.domain.models.WorkspaceConfiguration
-import runtime.domain.repositories.SessionRepository
 import runtime.infrastructure.plugin.PluginAssetsService
-import runtime.infrastructure.ws.PresenceManager
-import runtime.infrastructure.ws.WsEventPublisher
 import runtime.infrastructure.ws.WsSessionHandler
 
 class WebServer(
     private val config: RuntimeConfig,
-    private val sessionRepository: SessionRepository,
-    private val dispatchService: CommandDispatchService,
-    private val workspaceConfiguration: WorkspaceConfiguration,
-    private val activeSessions: MutableMap<String, DefaultWebSocketSession>,
+    private val registry: WorkspaceRegistry,
     private val messages: Messages,
-    pluginAssetsService: PluginAssetsService,
-    val presenceManager: PresenceManager,
-    val eventPublisher: WsEventPublisher
+    pluginAssetsService: PluginAssetsService
 ) {
     val httpEndpoints: HttpEndpoints = HttpEndpoints(
         config.http,
-        workspaceConfiguration,
+        registry,
         pluginAssetsService,
         config.routing.mode,
         uidocsEnabled = config.dev.enabled
@@ -47,17 +38,54 @@ class WebServer(
         install(WebSockets)
         httpEndpoints.module()(this)
         routing {
-            webSocket(config.ws.path) {
+            // WS v2: /ws/{workspace} (workspace session) and /ws/{workspace}/{projectId} (project session).
+            // Legacy /ws (single-workspace, project bound via project.create/open) still works.
+            webSocket("/ws/{workspace}/{projectId}") {
+                val workspaceId = call.parameters["workspace"]
+                val projectId = call.parameters["projectId"]
+                val ws = registry.get(workspaceId) ?: registry.default()
                 WsSessionHandler(
-                    dispatchService,
-                    sessionRepository,
-                    activeSessions,
+                    ws.dispatchService,
+                    ws.runtime.sessionRepository,
+                    ws.activeSessions,
                     messages,
-                    presenceManager,
-                    eventPublisher,
-                    collaborationEnabled = config.collaboration.enabled,
-                    cursorsEnabled = config.collaboration.cursorsEnabled,
-                    concurrencyLimit = config.command.wsConcurrency ?: 8
+                    ws.presenceManager,
+                    ws.eventPublisher,
+                    collaborationEnabled = ws.runtime.config.collaboration.enabled,
+                    cursorsEnabled = ws.runtime.config.collaboration.cursorsEnabled,
+                    concurrencyLimit = ws.runtime.config.command.wsConcurrency ?: 8,
+                    workspaceId = workspaceId,
+                    projectId = projectId
+                ).handle(this)
+            }
+            webSocket("/ws/{workspace}") {
+                val workspaceId = call.parameters["workspace"]
+                val ws = registry.get(workspaceId) ?: registry.default()
+                WsSessionHandler(
+                    ws.dispatchService,
+                    ws.runtime.sessionRepository,
+                    ws.activeSessions,
+                    messages,
+                    ws.presenceManager,
+                    ws.eventPublisher,
+                    collaborationEnabled = ws.runtime.config.collaboration.enabled,
+                    cursorsEnabled = ws.runtime.config.collaboration.cursorsEnabled,
+                    concurrencyLimit = ws.runtime.config.command.wsConcurrency ?: 8,
+                    workspaceId = workspaceId
+                ).handle(this)
+            }
+            webSocket(config.ws.path) {
+                val ws = registry.default()
+                WsSessionHandler(
+                    ws.dispatchService,
+                    ws.runtime.sessionRepository,
+                    ws.activeSessions,
+                    messages,
+                    ws.presenceManager,
+                    ws.eventPublisher,
+                    collaborationEnabled = ws.runtime.config.collaboration.enabled,
+                    cursorsEnabled = ws.runtime.config.collaboration.cursorsEnabled,
+                    concurrencyLimit = ws.runtime.config.command.wsConcurrency ?: 8
                 ).handle(this)
             }
         }

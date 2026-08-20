@@ -3,6 +3,10 @@ package runtime.application.workspace
 import java.util.logging.Logger
 import runtime.application.i18n.MessageRegistry
 import runtime.domain.models.AppConfiguration
+import runtime.domain.models.AppShell
+import runtime.domain.models.ShellAction
+import runtime.domain.models.ShellSidebar
+import runtime.domain.models.ShellTopbar
 import runtime.domain.models.ComponentDefinition
 import runtime.domain.models.CollaborationInfo
 import runtime.domain.models.CommandEntry
@@ -103,7 +107,12 @@ class WorkspaceConfigurationBuilder(
                     }
                 )
             },
-            entities = entityRegistry.list().sortedBy { it.value }.map { EntityEntry(type = it.value) },
+            entities = entityRegistry.list().sortedBy { it.value }.map { type ->
+                EntityEntry(
+                    type = type.value,
+                    schema = entityRegistry.get(type)?.schema?.toConfigMap()
+                )
+            },
             overlays = buildOverlays(resolvedUi),
             overlayTriggers = buildOverlayTriggers(resolvedUi),
             pluginComponents = buildPluginComponents(frontendComponents),
@@ -446,13 +455,69 @@ class WorkspaceConfigurationBuilder(
             ?: navigation.firstOrNull { it.pageId != null }?.pageId
             ?: pages.firstOrNull()?.id
 
+        // V7.4: declarative shell from the plugin's App definition.
+        val shell = buildShell(appDef, navigation)
+
         return AppConfiguration(
             title = title,
             logo = logo,
             layout = layout,
             landingPageId = landing,
-            theme = uiConfig.theme
+            theme = uiConfig.theme,
+            shell = shell
         )
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun buildShell(appDef: Map<String, Any>?, navigation: List<NavigationEntry>): AppShell {
+        val rawShell = appDef?.get("shell") as? Map<String, Any> ?: return AppShell()
+        val rawTopbar = rawShell["topbar"] as? Map<String, Any>
+        val rawSidebar = rawShell["sidebar"] as? Map<String, Any>
+
+        val topbar = ShellTopbar(
+            brand = (rawTopbar?.get("brand") as? Boolean) ?: true,
+            actions = buildShellActions(rawTopbar?.get("actions"))
+        )
+
+        // Sidebar groups: prefer explicit declaration, else default to navigation.
+        val sidebarGroups = when (val rawGroups = rawSidebar?.get("groups")) {
+            is List<*> -> rawGroups.mapNotNull { g ->
+                val m = g as? Map<String, Any> ?: return@mapNotNull null
+                NavigationEntry(
+                    id = m["id"] as String,
+                    label = m["label"] as String,
+                    pageId = m["pageId"] as? String,
+                    order = (m["order"] as? Number)?.toInt(),
+                    pluginId = m["pluginId"] as? String,
+                    group = m["group"] as? String,
+                    icon = m["icon"] as? String
+                )
+            }
+            else -> navigation
+        }
+
+        return AppShell(
+            topbar = topbar,
+            sidebar = ShellSidebar(groups = sidebarGroups)
+        )
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun buildShellActions(raw: Any?): List<ShellAction> {
+        if (raw !is List<*>) return emptyList()
+        return raw.mapNotNull { item ->
+            val m = item as? Map<String, Any> ?: return@mapNotNull null
+            ShellAction(
+                id = m["id"] as String,
+                label = m["label"] as? String,
+                icon = m["icon"] as? String,
+                action = m["action"] as? String ?: "command",
+                command = m["command"] as? String,
+                params = m["params"] as? Map<String, Any>,
+                page = m["page"] as? String,
+                variant = m["variant"] as? String
+            )
+        }
     }
 
 }

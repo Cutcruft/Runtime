@@ -1,20 +1,17 @@
-import { defineComponent as n, openBlock as s, createElementBlock as a, unref as e, normalizeStyle as r, normalizeClass as c, toDisplayString as i } from "vue";
+import { jsx as a } from "preact/jsx-runtime";
 import { useCfg as l } from "@cutcrft/runtime-client";
-const p = ["title"], d = /* @__PURE__ */ n({
-  __name: "UiBadge",
-  props: {
-    config: {},
-    context: {}
-  },
-  setup(o) {
-    const t = l(o.config, { tone: "neutral", text: "" });
-    return (f, u) => (s(), a("span", {
-      class: c(["ui-badge", [`ui-badge--${e(t).tone}`, e(t).className]]),
-      style: r(e(t).style),
-      title: e(t).tooltip
-    }, i(e(t).text), 15, p));
-  }
-});
+function o(t) {
+  const e = l(t.config, { tone: "neutral", text: "" });
+  return /* @__PURE__ */ a(
+    "span",
+    {
+      class: `ui-badge ui-badge--${e.value.tone}${e.value.className ? " " + e.value.className : ""}`,
+      style: e.value.style,
+      title: e.value.tooltip,
+      children: e.value.text
+    }
+  );
+}
 export {
-  d as default
+  o as default
 };

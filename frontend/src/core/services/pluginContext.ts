@@ -27,7 +27,7 @@ import { sessionStore } from '../../store/session'
 import { dataStore } from '../../store/data'
 import { toasts } from '../../store/toasts'
 import type { ShortcutEntry } from '../../protocol/types'
-import type { Component } from 'vue'
+import type { ComponentType } from 'preact'
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -40,11 +40,11 @@ export interface PluginContext {
   readonly pluginId: string
 
   // ── Component Registry ──────────────────────────────────────────
-  registerComponent(type: string, component: Component): () => void
+  registerComponent(type: string, component: ComponentType): () => void
   unregisterComponent(type: string): void
 
   // ── Editor Registry ─────────────────────────────────────────────
-  registerEditor(type: string, loader: () => Promise<{ default: Component }>): () => void
+  registerEditor(type: string, loader: () => Promise<{ default: ComponentType }>): () => void
   unregisterEditor(type: string): void
 
   // ── Shortcuts ───────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { signal } from '@preact/signals'
 import { WsClient, type WsStatus } from '../protocol/WsClient'
 import { WS_MESSAGE_TYPES, type CommandResultPayload, type WsEnvelope } from '../protocol/envelope'
 import { emitEvent } from '../events/eventBus'
@@ -11,10 +11,12 @@ import { toasts } from './toasts'
 import { globalSingleton } from '../utils/globalSingleton'
 
 const STORAGE_KEY = 'cc.projectId'
+const WORKSPACE_KEY = 'cc.workspaceId'
 
-const { wsStatus, projectId, sessionState } = globalSingleton('__cc_sess', () => ({
-  wsStatus: ref<WsStatus>('disconnected'),
-  projectId: ref<string | null>(null),
+const { wsStatus, projectId, workspaceId, sessionState } = globalSingleton('__cc_sess', () => ({
+  wsStatus: signal<WsStatus>('disconnected'),
+  projectId: signal<string | null>(null),
+  workspaceId: signal<string | null>(null),
   sessionState: { client: null as WsClient | null, reconnectProjectId: null as string | null }
 }))
 
@@ -31,12 +33,28 @@ function loadPersistedProject(): string | null {
   } catch { return null }
 }
 
+function persistWorkspace(id: string | null): void {
+  try {
+    if (id) localStorage.setItem(WORKSPACE_KEY, id)
+    else localStorage.removeItem(WORKSPACE_KEY)
+  } catch { /* localStorage unavailable */ }
+}
+
+function loadPersistedWorkspace(): string | null {
+  try {
+    return localStorage.getItem(WORKSPACE_KEY)
+  } catch { return null }
+}
+
 export const sessionStore = {
   get wsStatus(): WsStatus {
     return wsStatus.value
   },
   get projectId(): string | null {
     return projectId.value
+  },
+  get workspaceId(): string | null {
+    return workspaceId.value
   },
   get isConnected(): boolean {
     return wsStatus.value === 'connected'
@@ -47,7 +65,15 @@ export const sessionStore = {
 
   init(): void {
     const wsPath = configStore.transport?.wsPath ?? '/ws'
-    sessionState.client = new WsClient(wsPath)
+    const persistedWs = loadPersistedWorkspace()
+    const activeWs = persistedWs ?? deriveWorkspaceFromUrl()
+    if (activeWs) workspaceId.value = activeWs
+    // WS v2: carry workspace (and optionally persisted project) in the URL so the
+    // server binds the session to the project on connect.
+    sessionState.client = new WsClient(wsPath, {
+      workspaceId: activeWs ?? undefined,
+      projectId: projectId.value ?? loadPersistedProject() ?? undefined
+    })
     sessionState.client.onStatusChange = (status) => {
       wsStatus.value = status
       if (status === 'connected') {
@@ -64,6 +90,15 @@ export const sessionStore = {
     sessionState.client.connect()
   },
 
+  async setWorkspace(id: string): Promise<void> {
+    workspaceId.value = id
+    persistWorkspace(id)
+    // Reload the shell config for this workspace, then reconnect WS on it.
+    await configStore.setWorkspace(id)
+    sessionState.client?.close()
+    this.init()
+  },
+
   execute(commandId: string, params: unknown): Promise<CommandResultPayload> {
     if (!sessionState.client) return Promise.reject(new Error('Session not initialized'))
     return sessionState.client.execute(commandId, params)
@@ -72,6 +107,14 @@ export const sessionStore = {
   sendRaw(type: string, payload: Record<string, unknown>): void {
     if (!sessionState.client) return
     sessionState.client.sendRaw(type, payload)
+  },
+
+  subscribe(entityType: string, filter?: Record<string, unknown>): void {
+    sessionState.client?.subscribe(entityType, filter)
+  },
+
+  unsubscribe(entityType: string, filter?: Record<string, unknown>): void {
+    sessionState.client?.unsubscribe(entityType, filter)
   },
 
   async createProject(): Promise<string> {
@@ -141,8 +184,26 @@ function readProjectId(result: CommandResultPayload): string {
   throw new Error('Command result did not contain projectId')
 }
 
+function deriveWorkspaceFromUrl(): string | null {
+  // /ws/<workspace>/<projectId> or /ws/<workspace>
+  const match = window.location.pathname.match(/^\/ws\/([^/]+)/)
+  return match?.[1] ?? null
+}
+
 function handleIncoming(envelope: WsEnvelope): void {
   switch (envelope.type) {
+    case WS_MESSAGE_TYPES.PROJECT_BOUND: {
+      const pid = envelope.payload.projectId as string | undefined
+      if (typeof pid === 'string') {
+        projectId.value = pid
+        sessionState.reconnectProjectId = pid
+        persistProject(pid)
+        dataStore.refreshAll()
+        sendIdentityIfCollaborationEnabled()
+      }
+      emitEvent({ kind: WS_MESSAGE_TYPES.PROJECT_BOUND, payload: envelope.payload })
+      break
+    }
     case WS_MESSAGE_TYPES.PROJECT_EVENT: {
       const payload = envelope.payload
       const pid = payload.projectId
@@ -208,6 +269,12 @@ function handleIncoming(envelope: WsEnvelope): void {
       const message = (envelope.payload.message as string) ?? 'Unknown error'
       toasts.push({ message, kind: 'error' })
       emitEvent({ kind: WS_MESSAGE_TYPES.ERROR, payload: envelope.payload })
+      break
+    }
+    case WS_MESSAGE_TYPES.COMMANDS_RELOADED: {
+      toasts.push({ message: 'Plugin configuration reloaded', kind: 'info' })
+      dataStore.refreshAll()
+      emitEvent({ kind: WS_MESSAGE_TYPES.COMMANDS_RELOADED, payload: envelope.payload })
       break
     }
     default:

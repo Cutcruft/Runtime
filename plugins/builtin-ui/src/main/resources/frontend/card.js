@@ -1,71 +1,43 @@
-import { defineComponent as x, ref as v, openBlock as o, createElementBlock as n, normalizeStyle as p, unref as t, normalizeClass as f, createElementVNode as h, toDisplayString as d, createCommentVNode as a, Fragment as y, renderList as b, createBlock as A } from "vue";
-import { useContainerQuery as B, useCfg as N, runAction as S, findAction as $, resolveParams as k, sessionStore as q } from "@cutcrft/runtime-client";
-import { C as z } from "./vendor.js";
-import { _ as E } from "./vendor2.js";
-const U = {
-  key: 0,
-  class: "ui-card__header"
-}, V = { class: "ui-card__heading" }, w = {
-  key: 0,
-  class: "ui-card__title"
-}, D = {
-  key: 1,
-  class: "ui-card__subtitle"
-}, F = {
-  key: 0,
-  class: "ui-card__actions"
-}, H = ["onClick"], I = /* @__PURE__ */ x({
-  __name: "UiCard",
-  props: {
-    config: {},
-    context: {}
-  },
-  setup(u) {
-    const s = u, _ = v(null), C = B(_), e = N(s.config, {
-      bordered: !0,
-      padding: "var(--rt-space-lg)"
-    });
-    async function g(c, i) {
-      c && (S($(e.value.actions, "headerAction"), {
-        ...s.context ?? {},
-        payload: { command: c, params: k(i, s.context ?? {}) }
-      }), await q.executeCommand(c, k(i, s.context ?? {})));
-    }
-    return (c, i) => {
-      var m;
-      return o(), n("section", {
-        ref_key: "root",
-        ref: _,
-        class: f(["ui-card", [t(e).className, `ui-card--cq-${t(C)}`, { "ui-card--bordered": t(e).bordered }]]),
-        style: p(t(e).style)
-      }, [
-        t(e).title || t(e).subtitle || (m = t(e).headerActions) != null && m.length ? (o(), n("header", U, [
-          h("div", V, [
-            t(e).title ? (o(), n("h3", w, d(t(e).title), 1)) : a("", !0),
-            t(e).subtitle ? (o(), n("p", D, d(t(e).subtitle), 1)) : a("", !0)
-          ]),
-          t(e).headerActions ? (o(), n("div", F, [
-            (o(!0), n(y, null, b(t(e).headerActions, (r, l) => (o(), n("button", {
-              key: l,
-              class: f(["ui-button", [`ui-button--${r.variant ?? "default"}`, "ui-button--small"]]),
-              onClick: (L) => g(r.command ?? "", r.params)
-            }, d(r.label), 11, H))), 128))
-          ])) : a("", !0)
-        ])) : a("", !0),
-        h("div", {
-          class: "ui-card__body",
-          style: p({ padding: t(e).padding })
-        }, [
-          (o(!0), n(y, null, b(t(e).components ?? [], (r, l) => (o(), A(z, {
-            key: l,
-            component: r,
-            context: u.context
-          }, null, 8, ["component", "context"]))), 128))
-        ], 4)
-      ], 6);
-    };
+import { jsxs as n, jsx as l } from "preact/jsx-runtime";
+import { useRef as v } from "preact/hooks";
+import { useContainerQuery as h, useCfg as m, Container as f, runAction as b, findAction as _, resolveParams as r, sessionStore as g } from "@cutcrft/runtime-client";
+function A(i) {
+  var u;
+  const c = v(null), s = h(c), e = m(i.config, { bordered: !0, padding: "var(--rt-space-lg)" });
+  async function d(a, t) {
+    a && (b(_(e.value.actions, "headerAction"), {
+      ...i.context ?? {},
+      payload: { command: a, params: r(t, i.context ?? {}) }
+    }), await g.executeCommand(a, r(t, i.context ?? {})));
   }
-}), J = /* @__PURE__ */ E(I, [["__scopeId", "data-v-0bf32297"]]);
+  const o = i.context;
+  return /* @__PURE__ */ n(
+    "section",
+    {
+      ref: c,
+      class: `ui-card ui-card--cq-${s.value}${e.value.bordered ? " ui-card--bordered" : ""}${e.value.className ? " " + e.value.className : ""}`,
+      style: e.value.style,
+      children: [
+        e.value.title || e.value.subtitle || (u = e.value.headerActions) != null && u.length ? /* @__PURE__ */ n("header", { class: "ui-card__header", children: [
+          /* @__PURE__ */ n("div", { class: "ui-card__heading", children: [
+            e.value.title ? /* @__PURE__ */ l("h3", { class: "ui-card__title", children: e.value.title }) : null,
+            e.value.subtitle ? /* @__PURE__ */ l("p", { class: "ui-card__subtitle", children: e.value.subtitle }) : null
+          ] }),
+          e.value.headerActions ? /* @__PURE__ */ l("div", { class: "ui-card__actions", children: e.value.headerActions.map((a, t) => /* @__PURE__ */ l(
+            "button",
+            {
+              class: `ui-button ui-button--${a.variant ?? "default"} ui-button--small`,
+              onClick: () => d(a.command ?? "", a.params),
+              children: a.label
+            },
+            t
+          )) }) : null
+        ] }) : null,
+        /* @__PURE__ */ l("div", { class: "ui-card__body", style: { padding: e.value.padding }, children: (e.value.components ?? []).map((a, t) => /* @__PURE__ */ l(f, { component: a, context: o }, t)) })
+      ]
+    }
+  );
+}
 export {
-  J as default
+  A as default
 };

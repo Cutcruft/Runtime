@@ -45,8 +45,7 @@ class BuiltinUiPlugin : Plugin() {
                     type = type,
                     name = name,
                     version = "1.0.0",
-                    bundlePath = "frontend/$bundle.js",
-                    cssPath = "frontend/style.css"
+                    bundlePath = "frontend/$bundle.js"
                 )
             )
         }

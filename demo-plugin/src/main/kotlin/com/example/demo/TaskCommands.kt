@@ -161,6 +161,29 @@ class DeleteTaskCommand : Command(
     }
 }
 
+/** V6 demo: model-bound action — reopens a task (disabledWhen status=open). */
+class ReopenTaskCommand : Command(
+    "reopentask",
+    "Reopen a completed task",
+    "Tasks",
+    parameters = listOf(CommandParameter("id", "uuid", required = true, description = "Task id"))
+) {
+    override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult {
+        val p = params as? Map<*, *> ?: return CommandResult.error("Missing parameters")
+        val id = parseId(p) ?: return CommandResult.error("Missing or invalid id")
+        return context.withProjectLock {
+            val list = context.objectList<Task>(TASK_TYPE)
+            val current = list.get(id) ?: return@withProjectLock CommandResult.error("Task not found")
+            if (current.status != "done") {
+                return@withProjectLock CommandResult.error("Only completed tasks can be reopened")
+            }
+            val updated = current.copy(status = "open")
+            list.update(id, updated)
+            CommandResult.success(value = updated, references = listOf(ObjectRef(TASK_TYPE, id)))
+        }
+    }
+}
+
 class TaskStatsCommand : Command("stats", "Task statistics", "Tasks") {
     override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult {
         val tasks = context.objectList<Task>(TASK_TYPE).values()

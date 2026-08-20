@@ -10,7 +10,8 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "jsx": "preserve",
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
@@ -19,7 +20,7 @@
       "@cutcrft/runtime-client": ["./src/plugin/runtimeClient.ts"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"],
-  "exclude": ["src/editors/**/*", "src/stories/**/*"],
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["src/stories/**/*", "src/**/*.vue", "src/main.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

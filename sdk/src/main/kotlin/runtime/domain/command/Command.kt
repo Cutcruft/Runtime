@@ -4,11 +4,21 @@ import java.util.logging.Level
 import java.util.logging.Logger
 
 /** Declarative metadata for a single command parameter, surfaced in /docs and validators. */
-data class CommandParameter(
+data class CommandParameter @JvmOverloads constructor(
     val name: String,
     val type: String = "string",
     val required: Boolean = false,
-    val description: String = ""
+    val description: String = "",
+    /** Entity model type this parameter references, e.g. "demo.task" (for reference/objectId fields). */
+    val entityType: String? = null,
+    /** Allowed values for enum-typed parameters. */
+    val enumValues: List<String> = emptyList(),
+    /** Numeric min (number types) / string min length (string types). */
+    val min: Double? = null,
+    /** Numeric max (number types) / string max length (string types). */
+    val max: Double? = null,
+    /** Regex pattern for string types. */
+    val pattern: String? = null
 )
 
 abstract class Command @JvmOverloads constructor(

@@ -6,6 +6,8 @@ import runtime.domain.models.RegisteredUi
 import runtime.domain.models.RuntimeConfig
 import runtime.domain.plugin.FrontendComponentDefinition
 import runtime.domain.plugin.PluginId
+import runtime.domain.plugin.yaml.YamlCommandParser
+import runtime.domain.plugin.yaml.YamlPluginLoader
 import runtime.domain.repositories.CommandRegistry
 import runtime.domain.repositories.EntityRegistry
 import runtime.domain.repositories.InfrastructureRegistry
@@ -14,6 +16,7 @@ import runtime.infrastructure.plugin.PluginClassLoader
 import runtime.infrastructure.plugin.PluginContextImpl
 import runtime.infrastructure.plugin.PluginDescriptorLoader
 import runtime.infrastructure.plugin.PluginLoader
+import runtime.infrastructure.plugin.YamlResourceLoader
 import runtime.infrastructure.script.KotlinScriptEngine
 
 /**
@@ -37,6 +40,19 @@ class PluginBootstrap(
     )
 
     fun bootstrap(): Result {
+        // Wire YAML auto-CRUD generation (SDK delegates to runtime SchemaCrudCommands).
+        YamlCommandParser.crudFactory = { entity, prefix, group ->
+            val schema = entityRegistry.get(entity)?.schema
+                ?: throw IllegalArgumentException("Auto-CRUD for '$entity' requires a registered schema entity")
+            listOf(
+                runtime.domain.script.SchemaCrudCommands.create(schema, prefix, group),
+                runtime.domain.script.SchemaCrudCommands.update(schema, prefix, group),
+                runtime.domain.script.SchemaCrudCommands.delete(schema, prefix, group),
+                runtime.domain.script.SchemaCrudCommands.list(schema, prefix, group),
+                runtime.domain.script.SchemaCrudCommands.validate(schema, prefix, group)
+            )
+        }
+
         // Discover plugins
         val pluginLoader = PluginLoader(
             config.plugins.directories,
@@ -66,6 +82,18 @@ class PluginBootstrap(
             messages = messages
         )
         val loadedPluginIds = pluginManager.bootstrap(descriptors).toSet()
+
+        // Load YAML-declared definitions (entities/commands/ui) from each plugin JAR.
+        val yamlResourceLoader = YamlResourceLoader()
+        val yamlMessageEntries = mutableMapOf<String, Map<String, String>>()
+        for (descriptor in descriptors) {
+            val pluginId = descriptor.id
+            val context = PluginContextImpl(pluginId, entityRegistry, commandRegistry, infrastructureRegistry,
+                onUiRegistered = { ui -> uiDefinitions += RegisteredUi(pluginId = pluginId, definition = ui) },
+                onFrontendComponentRegistered = { fc -> frontendComponents += pluginId to fc }
+            )
+            loadYamlForPlugin(pluginId.value, descriptor, yamlResourceLoader, context, yamlMessageEntries)
+        }
 
         // Build script engine
         val scriptEngine = KotlinScriptEngine(
@@ -97,6 +125,8 @@ class PluginBootstrap(
                 .loadFromJar(descriptor.id.value, descriptor.jarPath)
                 .forEach { (locale, entries) -> messageRegistry.register(locale, entries) }
         }
+        // Register YAML messages (overlay/merge after JSON catalogs so YAML wins).
+        yamlMessageEntries.forEach { (locale, entries) -> messageRegistry.register(locale, entries) }
 
         return Result(
             descriptors = descriptors,
@@ -106,5 +136,61 @@ class PluginBootstrap(
             messageRegistry = messageRegistry,
             scriptEngine = scriptEngine
         )
+    }
+
+    /**
+     * Loads YAML definitions for a plugin from its JAR (`yaml/` resources) and, in
+     * dev mode, from the plugin's unpacked directory (`<dir>/yaml/`). Directory files
+     * override JAR entries when both exist.
+     */
+    private fun loadYamlForPlugin(
+        pluginIdValue: String,
+        descriptor: runtime.domain.models.PluginDescriptor,
+        yamlResourceLoader: YamlResourceLoader,
+        context: PluginContextImpl,
+        yamlMessageEntries: MutableMap<String, Map<String, String>>
+    ) {
+        val jarPath = descriptor.jarPath
+        val isDir = java.io.File(jarPath).isDirectory
+        val entries = if (isDir) {
+            yamlResourceLoader.listYamlEntriesFromDir(jarPath)
+        } else {
+            yamlResourceLoader.listYamlEntries(jarPath)
+        }
+        if (entries.isEmpty()) return
+
+        val read: (String) -> String? = { entry ->
+            if (isDir) yamlResourceLoader.readEntryFromDir(jarPath, entry)
+            else yamlResourceLoader.readEntry(jarPath, entry)
+        }
+        val resolver: (String) -> String? = read
+
+        // Entities first (CRUD generation depends on registered schemas), then commands/ui/messages.
+        for (entry in entries) {
+            if (!isYamlCategory(entry, "entities")) continue
+            val content = read(entry) ?: continue
+            val entity = runtime.domain.plugin.yaml.YamlEntityParser.parse(content)
+            context.registerEntity(entity)
+        }
+
+        for (entry in entries) {
+            val content = read(entry) ?: continue
+            when {
+                isYamlCategory(entry, "commands") ->
+                    YamlCommandParser.parse(content, pluginIdValue, resolver).forEach { context.registerCommand(it) }
+                isYamlCategory(entry, "ui") ->
+                    runtime.domain.plugin.yaml.YamlUiParser.parse(content).forEach { context.registerUi(it) }
+                isYamlCategory(entry, "messages") ->
+                    runtime.domain.plugin.yaml.YamlMessagesParser.parse(content).forEach { (locale, msgs) ->
+                        yamlMessageEntries[locale] = (yamlMessageEntries[locale] ?: emptyMap()) + msgs
+                    }
+            }
+        }
+    }
+
+    /** Matches `yaml/entities/x.yaml`, `entities/x.yaml`, and `./entities/x.yaml`. */
+    private fun isYamlCategory(entry: String, category: String): Boolean {
+        val normalized = entry.trimStart('/')
+        return normalized == "$category" || normalized.startsWith("$category/")
     }
 }

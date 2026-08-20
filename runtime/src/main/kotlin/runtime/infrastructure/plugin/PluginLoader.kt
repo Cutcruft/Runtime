@@ -21,8 +21,9 @@ class PluginLoader(
             pluginDir.listFiles { file -> file.isDirectory }?.forEach { subDir ->
                 try {
                     descriptors.add(descriptorLoader.load(subDir.absolutePath))
+                    println("[PluginLoader] discovered ${subDir.name}")
                 } catch (e: Exception) {
-                    // Skip invalid plugins during discovery
+                    println("[PluginLoader] skip ${subDir.name}: ${e.message}")
                 }
             }
         }

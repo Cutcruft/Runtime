@@ -14,6 +14,7 @@ import runtime.domain.command.Command
 import runtime.domain.command.CommandContext
 import runtime.domain.command.CommandResult
 import runtime.domain.command.CommandType
+import runtime.domain.command.CommandValidator
 import runtime.domain.command.PipelineCommand
 import runtime.domain.command.PipelineStep
 import runtime.domain.models.Messages
@@ -72,6 +73,19 @@ class CommandExecutor(
     ): CommandResult {
         val command = commandRegistry.get(commandId)
             ?: return CommandResult.error(messages.format(Messages.COMMAND_NOT_FOUND, "commandId" to commandId))
+
+        // Schema validation before any lock/execution — produces structured fieldErrors.
+        val fieldErrors = CommandValidator.validate(command, params)
+        if (fieldErrors.isNotEmpty()) {
+            return CommandResult.validationError(
+                message = messages.format(
+                    Messages.COMMAND_VALIDATION_FAILED,
+                    "commandId" to commandId,
+                    "count" to fieldErrors.size
+                ),
+                fieldErrors = fieldErrors
+            )
+        }
 
         val result = withContext(dispatcher) {
             try {

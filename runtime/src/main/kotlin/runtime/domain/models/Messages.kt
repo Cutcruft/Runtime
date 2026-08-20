@@ -25,6 +25,7 @@ class Messages(private val entries: Map<String, String>) {
         const val COMMAND_EXECUTION_FAILED = "commandExecutionFailed"
         const val COMMAND_TIMEOUT = "commandTimeout"
         const val COMMAND_BUSY = "commandBusy"
+        const val COMMAND_VALIDATION_FAILED = "commandValidationFailed"
         const val MISSING_DATA = "missingData"
         const val MISSING_PARAMETERS = "missingParameters"
         const val UNKNOWN_ENTITY_TYPE = "unknownEntityType"

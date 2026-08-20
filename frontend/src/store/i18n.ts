@@ -1,4 +1,4 @@
-import { computed, reactive } from 'vue'
+import { signal, computed } from '@preact/signals'
 import type { I18nConfiguration } from '../protocol/types'
 import { globalSingleton } from '../utils/globalSingleton'
 
@@ -20,7 +20,7 @@ function resolveInitialLocale(config: I18nConfiguration | null): string {
   return config.defaultLocale
 }
 
-const state = globalSingleton('__cc_i18n', () => reactive<I18nState>({
+const state = globalSingleton('__cc_i18n', () => signal<I18nState>({
   config: null,
   locale: 'en'
 }))
@@ -44,13 +44,13 @@ function pluralize(key: string, params?: Record<string, unknown>): string {
 }
 
 function hasKey(key: string): boolean {
-  const dict = state.config?.messages[state.locale] ?? state.config?.messages[state.config.defaultLocale]
+  const dict = state.value.config?.messages[state.value.locale] ?? state.value.config?.messages[state.value.config.defaultLocale]
   return dict != null && key in dict
 }
 
 /** Translation helper: `t('core.table.search')` or `t('demo.hello', { name })`. */
 function t(key: string, params?: Record<string, unknown>): string {
-  const dict = state.config?.messages[state.locale] ?? state.config?.messages[state.config.defaultLocale] ?? {}
+  const dict = state.value.config?.messages[state.value.locale] ?? state.value.config?.messages[state.value.config.defaultLocale] ?? {}
   const resolved = pluralize(key, params)
   return interpolate(dict[resolved] ?? key, params)
 }
@@ -80,7 +80,7 @@ function deepTranslate<T>(value: T): T {
 
 /** All keys available in the current locale (or a fallback locale). */
 function translateFor(locale: string, key: string, params?: Record<string, unknown>): string {
-  const dict = state.config?.messages[locale] ?? {}
+  const dict = state.value.config?.messages[locale] ?? {}
   const resolved = params && typeof params.count === 'number'
     ? `${key}_${(params.count as number) === 1 ? 'one' : 'many'}`
     : key
@@ -89,32 +89,31 @@ function translateFor(locale: string, key: string, params?: Record<string, unkno
 
 export const i18nStore = {
   get loaded(): boolean {
-    return state.config !== null
+    return state.value.config !== null
   },
   get defaultLocale(): string {
-    return state.config?.defaultLocale ?? 'en'
+    return state.value.config?.defaultLocale ?? 'en'
   },
   get locales(): string[] {
-    return state.config?.locales ?? ['en']
+    return state.value.config?.locales ?? ['en']
   },
   get locale(): string {
-    return state.locale
+    return state.value.locale
   },
   t,
   tr,
   deepTranslate,
   /** Initializes from workspace config, respecting stored/browser locale. */
   init(config: I18nConfiguration | null): void {
-    state.config = config
-    state.locale = resolveInitialLocale(config)
+    state.value = { ...state.value, config, locale: resolveInitialLocale(config) }
   },
   setLocale(locale: string): void {
-    if (!state.config || !state.config.locales.includes(locale)) return
-    state.locale = locale
+    if (!state.value.config || !state.value.config.locales.includes(locale)) return
+    state.value = { ...state.value, locale }
     localStorage.setItem(LOCALE_KEY, locale)
   },
   /** Available locales other than the current one (for a switcher). */
-  otherLocales: computed(() => state.config?.locales.filter((l) => l !== state.locale) ?? []),
+  otherLocales: computed(() => state.value.config?.locales.filter((l) => l !== state.value.locale) ?? []),
   translateFor
 }
 

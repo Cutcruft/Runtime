@@ -21,8 +21,8 @@ plugins/*/*.jar
 .plugins/
 
 # Frontend
-frontend/node_modules/
-frontend/dist/
+*/node_modules/
+*/dist/
 
 # Copied frontend build (populated by `make build`)
 runtime/src/main/resources/static/

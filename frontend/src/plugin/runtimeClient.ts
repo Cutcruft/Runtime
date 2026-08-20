@@ -6,6 +6,12 @@
  *
  * Usage in a plugin:
  *   import { useCfg, useData, sessionStore } from '@cutcrft/runtime-client'
+ *
+ * Framework note: the core runtime is Preact + @preact/signals. Stores are
+ * exported as signal objects (`.value`) — consume them via `useSignal`/
+ * `computed` from '@preact/signals', or read `.value` directly. Editor
+ * bundles built as Vue SFCs may also import 'vue' (resolved by importmap)
+ * and use `useCfg`/`useData` as before.
  */
 
 // ── Config & Data composables ──────────────────────────────────
@@ -23,6 +29,14 @@ export {
   runAction
 } from '../renderer/bindingEngine'
 export type { LoadResult } from '../renderer/bindingEngine'
+
+// ── V6: model-driven binding (entityType / fields / disabledWhen) ──
+export {
+  entitySchema,
+  isDisabledByModel,
+  buildModelParams,
+  missingRequiredFields
+} from '../renderer/modelBinding'
 
 // ── Formatting ─────────────────────────────────────────────────
 export { formatValue, formatNumber } from '../renderer/format'
@@ -43,13 +57,13 @@ export { presenceStore } from '../store/presence'
 export { layerStore } from '../store/layer'
 
 // ── Core primitives (re-exported as named) ──────────────────────
-export { Container, Page, Section, Layer, Tabs, Toast, Stack, Grid, Slot, Portal } from '../core/primitives'
+export { Container, Page, Section, Layer, Tabs, ToastViewport as Toast, Stack, Grid, Slot, Portal } from '../core/primitives'
 
 // ── Theme provider ──────────────────────────────────────────────
-export { default as ThemeProvider } from '../core/ThemeProvider.vue'
+export { ThemeProvider } from '../core/ThemeProvider'
 
 // ── Component host (backward-compat alias for plugin bundles) ────
-export { default as ComponentHost } from '../core/primitives/Container.vue'
+export { Container as ComponentHost } from '../core/primitives'
 
 // ── Shortcut service ───────────────────────────────────────────
 export { mountShortcut, registerShortcut, emitShortcutAction, listShortcuts, reassignShortcut, formatCombo } from '../events/ShortcutService'
@@ -60,10 +74,21 @@ export { overlayService } from '../overlay/overlayService'
 // ── Event bus ──────────────────────────────────────────────────
 export { subscribeEvent, emitEvent } from '../events/eventBus'
 export type { RuntimeEvent } from '../protocol/envelope'
+export type { FieldError, CommandResultPayload, WsEnvelope } from '../protocol/envelope'
+
+// ── Field errors (structured validation errors from command results) ──
+/** Returns field→message map from a command result payload (fieldErrors[] → {field: message}). */
+export function fieldErrorMap(result: { fieldErrors?: Array<{ field: string; message: string }> }): Record<string, string> {
+  const map: Record<string, string> = {}
+  for (const fe of result.fieldErrors ?? []) {
+    map[fe.field] = fe.message
+  }
+  return map
+}
 
 // ── Registry ───────────────────────────────────────────────────
 export { registerComponent, resolveComponent, registeredTypes, unregisterComponent } from '../renderer/componentRegistry'
-export { registerEditor, resolveEditor, isEditorType, registeredEditorTypes, unregisterEditor } from '../editor/editorRegistry'
+export { registerEditor, registerEditorComponent, resolveEditor, isEditorType, registeredEditorTypes, unregisterEditor } from '../editor/editorRegistry'
 export type { EditorLoader } from '../editor/editorRegistry'
 
 // ── Plugin Context (new API for plugin authors) ────────────────

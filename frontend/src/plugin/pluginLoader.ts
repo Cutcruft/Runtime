@@ -3,16 +3,15 @@
  * (editors, custom components) from /config pluginComponents[] entries.
  *
  * Each plugin component bundle is an ES module that:
- *   - imports { ref, computed, ... } from 'vue'           (resolved by importmap)
  *   - imports { useCfg, useData, ... } from '@cutcrft/runtime-client'
- *   - exports default a Vue Component
+ *   - exports default a Preact component
  *
  * The loader fetches /config at startup, reads pluginComponents[],
  * and dynamically imports each bundle URL.
  */
 
 import { configStore } from '../store/config'
-import { registerEditor } from '../editor/editorRegistry'
+import { registerEditorComponent } from '../editor/editorRegistry'
 import { registerComponent } from '../renderer/componentRegistry'
 
 const loadedBundles = new Set<string>()
@@ -62,21 +61,29 @@ export async function loadPluginComponents(): Promise<void> {
     }
   }
 
-  // Register lazy loaders for editors — they only import when a page needs them
-  for (const entry of editors) {
-    const editorKey = EDITOR_TYPE_MAP[entry.type]
-    if (!editorKey) continue
-    if (entry.cssUrl) injectCss(entry.cssUrl)
+  // Eagerly import editor components to avoid defineAsyncComponent + :key re-render crash
+  const editorResults = await Promise.allSettled(
+    editors.map(async (entry) => {
+      const editorKey = EDITOR_TYPE_MAP[entry.type]
+      if (!editorKey) return
+      if (entry.cssUrl) injectCss(entry.cssUrl)
 
-    const bundleUrl = entry.bundleUrl
-    registerEditor(editorKey, () => import(/* @vite-ignore */ bundleUrl))
-    for (const [alias, key] of Object.entries(MIGRATION_ALIASES)) {
-      if (key === editorKey && alias !== editorKey) {
-        registerEditor(alias, () => import(/* @vite-ignore */ bundleUrl))
+      const module = await import(/* @vite-ignore */ entry.bundleUrl)
+      const component = module.default ?? module
+      registerEditorComponent(editorKey, component)
+      for (const [alias, key] of Object.entries(MIGRATION_ALIASES)) {
+        if (key === editorKey && alias !== editorKey) {
+          registerEditorComponent(alias, component)
+        }
       }
-    }
-    loadedBundles.add(bundleUrl)
-    console.log(`[PluginLoader] Registered lazy editor "${entry.type}" from ${bundleUrl}`)
+      loadedBundles.add(entry.bundleUrl)
+      console.log(`[PluginLoader] Loaded editor "${entry.type}" from ${entry.bundleUrl}`)
+    })
+  )
+
+  const failedEditors = editorResults.filter((r) => r.status === 'rejected')
+  if (failedEditors.length > 0) {
+    console.warn(`[PluginLoader] ${failedEditors.length}/${editors.length} editor bundles failed to load`)
   }
 
   // Import generic components in parallel

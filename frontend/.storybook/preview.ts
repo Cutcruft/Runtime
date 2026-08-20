@@ -1,4 +1,4 @@
-import type { Preview } from '@storybook/vue3'
+import type { Preview } from '@storybook/preact'
 import '../src/styles/global.css'
 import { applyStorybookRuntime } from '../src/storybook/mockRuntime'
 

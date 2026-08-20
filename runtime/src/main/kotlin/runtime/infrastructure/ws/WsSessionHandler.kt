@@ -19,8 +19,10 @@ import kotlinx.coroutines.sync.withLock
 import runtime.application.session.CommandDispatchService
 import runtime.domain.command.CommandResult
 import runtime.domain.models.Messages
+import runtime.domain.models.Project
 import runtime.domain.models.ProjectId
 import runtime.domain.models.Session
+import runtime.domain.models.SubscriptionFilter
 import runtime.domain.repositories.SessionRepository
 
 class WsSessionHandler(
@@ -32,11 +34,13 @@ class WsSessionHandler(
     private val eventPublisher: WsEventPublisher,
     private val collaborationEnabled: Boolean = false,
     private val cursorsEnabled: Boolean = false,
-    private val concurrencyLimit: Int = 8
+    private val concurrencyLimit: Int = 8,
+    private val workspaceId: String? = null,
+    private val projectId: String? = null
 ) {
     suspend fun handle(session: DefaultWebSocketSession) {
         val sessionId = UUID.randomUUID().toString()
-        sessionRepository.register(Session(sessionId))
+        sessionRepository.register(Session(sessionId, workspaceId = workspaceId))
         activeSessions[sessionId] = session
 
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -45,6 +49,42 @@ class WsSessionHandler(
         var boundProjectId: ProjectId? = null
 
         try {
+            // WS v2: bind the session to the project carried in the URL and acknowledge.
+            if (projectId != null) {
+                val parsed = runCatching { ProjectId(java.util.UUID.fromString(projectId)) }.getOrNull()
+                if (parsed != null) {
+                    val project = resolveProject(parsed)
+                    if (project != null) {
+                        sessionRepository.get(sessionId)?.project = project
+                        boundProjectId = project.id
+                        eventPublisher.bindSession(sessionId, project.id)
+                        sendLocked(
+                            session, sendMutex,
+                            WsEnvelope(
+                                type = WsMessageType.PROJECT_BOUND.value,
+                                payload = mapOf(
+                                    "projectId" to project.id.value.toString(),
+                                    "workspaceId" to (workspaceId ?: "")
+                                )
+                            )
+                        )
+                        if (collaborationEnabled) {
+                            handlePresenceJoin(sessionId, project.id, null, sendMutex)
+                        }
+                    } else {
+                        sendErrorLocked(
+                            session, sendMutex, null,
+                            messages.format(Messages.PROJECT_NOT_FOUND, "projectId" to projectId)
+                        )
+                    }
+                } else {
+                    sendErrorLocked(
+                        session, sendMutex, null,
+                        messages.format(Messages.INVALID_PROJECT_ID, "projectId" to projectId)
+                    )
+                }
+            }
+
             val workers = (1..concurrencyLimit).map {
                 scope.launch {
                     for (envelope in channel) {
@@ -101,6 +141,19 @@ class WsSessionHandler(
         }
     }
 
+    private fun resolveProject(projectId: ProjectId): Project? {
+        // WsSessionHandler only has the session repository; look up via the dispatch service.
+        return dispatchService.getProject(projectId)
+    }
+
+    private suspend fun sendLocked(
+        session: DefaultWebSocketSession,
+        sendMutex: Mutex,
+        envelope: WsEnvelope
+    ) {
+        sendMutex.withLock { session.send(Frame.Text(WsProtocol.encode(envelope))) }
+    }
+
     private sealed interface HandleResult {
         data object Ok : HandleResult
         data class ProjectBound(val projectId: ProjectId) : HandleResult
@@ -146,6 +199,28 @@ class WsSessionHandler(
                         }
                     }
                 }
+                return HandleResult.Ok
+            }
+            WsMessageType.SUBSCRIBE.value -> {
+                val entityType = envelope.payload["entityType"] as? String
+                if (entityType == null) {
+                    sendErrorLocked(session, sendMutex, envelope, "Missing entityType for subscribe")
+                    return HandleResult.Ok
+                }
+                val filter = envelope.payload["filter"] as? Map<String, Any?> ?: emptyMap()
+                sessionRepository.get(sessionId)?.addSubscription(
+                    SubscriptionFilter(entityType = entityType, filter = filter)
+                )
+                return HandleResult.Ok
+            }
+            WsMessageType.UNSUBSCRIBE.value -> {
+                val entityType = envelope.payload["entityType"] as? String
+                if (entityType == null) {
+                    sendErrorLocked(session, sendMutex, envelope, "Missing entityType for unsubscribe")
+                    return HandleResult.Ok
+                }
+                val filter = envelope.payload["filter"] as? Map<String, Any?> ?: emptyMap()
+                sessionRepository.get(sessionId)?.removeSubscription(entityType, filter)
                 return HandleResult.Ok
             }
             WsMessageType.CLIENT_IDENTITY.value -> {
@@ -200,7 +275,12 @@ class WsSessionHandler(
                 }
             )
         )
-        broadcastToProject(projectId, listEnvelope)
+        // Send the list to the joining session directly; broadcast to all others.
+        val self = activeSessions[sessionId]
+        if (self != null) {
+            sendLocked(self, sendMutex, listEnvelope)
+        }
+        broadcastToProjectExcept(projectId, sessionId, listEnvelope)
     }
 
     private suspend fun broadcastPresence(
@@ -217,7 +297,7 @@ class WsSessionHandler(
                 "color" to identity.color
             )
         )
-        broadcastToProject(projectId, envelope)
+        broadcastToProjectExcept(projectId, sessionId, envelope)
     }
 
     private suspend fun broadcastToProject(projectId: ProjectId, envelope: WsEnvelope) {
@@ -253,6 +333,15 @@ class WsSessionHandler(
             )
         }
         result.error?.let { payload["error"] = it }
+        if (result.fieldErrors.isNotEmpty()) {
+            payload["fieldErrors"] = result.fieldErrors.map { fe ->
+                mapOf(
+                    "field" to fe.field,
+                    "code" to fe.code,
+                    "message" to fe.message
+                )
+            }
+        }
 
         val response = WsEnvelope(
             type = WsMessageType.COMMAND_RESULT.value,

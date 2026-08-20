@@ -143,9 +143,65 @@ data class AppFields(
     val layout: String
 )
 
+/** Semantic color roles per theme mode. */
+data class ThemePalette(
+    val bg: String,
+    val surface: String,
+    val text: String,
+    val muted: String,
+    val border: String,
+    val primary: String,
+    val primaryHover: String,
+    val danger: String,
+    val success: String,
+    val warning: String,
+    val info: String
+)
+
+/** Typography scale: families + base sizes. */
+data class ThemeTypography(
+    val fontFamily: String = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    val headingFont: String? = null,
+    val monospaceFont: String = "'SF Mono', Menlo, monospace",
+    val baseSize: String = "14px",
+    val scale: Map<String, String> = emptyMap()
+)
+
+/** Radii / spacing / motion tokens. */
+data class ThemeRadii(
+    val sm: String = "6px",
+    val md: String = "8px",
+    val lg: String = "12px",
+    val xl: String = "16px"
+)
+
+data class ThemeSpacing(
+    val xs: String = "4px",
+    val sm: String = "8px",
+    val md: String = "12px",
+    val lg: String = "20px",
+    val xl: String = "32px"
+)
+
+data class ThemeMotion(
+    val duration: Map<String, String> = emptyMap(),
+    val easing: Map<String, String> = emptyMap()
+)
+
+/**
+ * V7.1 — typed theme. `mode` selects the active palette; `palette` holds semantic
+ * color roles for light/dark; typography/radii/spacing/motion are shared tokens.
+ * The frontend flattens this into `--rt-*` CSS variables. `tokens` remains as a
+ * catch-all for arbitrary overrides.
+ */
 data class ThemeConfig(
     val mode: String,
-    val tokens: Map<String, String>
+    val tokens: Map<String, String>,
+    val palette: Map<String, ThemePalette> = emptyMap(),
+    val typography: ThemeTypography = ThemeTypography(),
+    val radii: ThemeRadii = ThemeRadii(),
+    val spacing: ThemeSpacing = ThemeSpacing(),
+    val motion: ThemeMotion = ThemeMotion()
 )
 
 data class DevConfig(

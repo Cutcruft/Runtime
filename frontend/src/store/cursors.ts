@@ -1,4 +1,4 @@
-import { reactive } from 'vue'
+import { signal } from '@preact/signals'
 import { globalSingleton } from '../utils/globalSingleton'
 
 export interface RemoteCursor {
@@ -19,7 +19,7 @@ interface CursorState {
 }
 
 const { state, listeners } = globalSingleton('__cc_cursor', () => ({
-  state: reactive<CursorState>({ cursors: new Map() }),
+  state: signal<CursorState>({ cursors: new Map() }),
   listeners: new Set<Listener>()
 }))
 
@@ -31,7 +31,7 @@ function notify(): void {
 
 export const cursorStore = {
   get all(): RemoteCursor[] {
-    return Array.from(state.cursors.values())
+    return Array.from(state.value.cursors.values())
   },
 
   getCursorsForObject(entityType: string, objectId: string): RemoteCursor[] {
@@ -43,39 +43,44 @@ export const cursorStore = {
   },
 
   updateCursor(cursor: Omit<RemoteCursor, 'lastSeen'>) {
-    state.cursors.set(cursor.sessionId, {
-      ...cursor,
-      lastSeen: Date.now()
-    })
+    const next = new Map(state.value.cursors)
+    next.set(cursor.sessionId, { ...cursor, lastSeen: Date.now() })
+    state.value = { cursors: next }
     notify()
   },
 
   removeCursor(sessionId: string) {
-    state.cursors.delete(sessionId)
+    const next = new Map(state.value.cursors)
+    next.delete(sessionId)
+    state.value = { cursors: next }
     notify()
   },
 
   removeObjectCursors(entityType: string, objectId: string) {
-    for (const [key, cursor] of state.cursors) {
+    const next = new Map(state.value.cursors)
+    for (const [key, cursor] of next) {
       if (cursor.entityType === entityType && cursor.objectId === objectId) {
-        state.cursors.delete(key)
+        next.delete(key)
       }
     }
+    state.value = { cursors: next }
     notify()
   },
 
   purgeStale() {
     const now = Date.now()
-    for (const [key, cursor] of state.cursors) {
+    const next = new Map(state.value.cursors)
+    for (const [key, cursor] of next) {
       if (now - cursor.lastSeen > STALE_MS) {
-        state.cursors.delete(key)
+        next.delete(key)
       }
     }
+    state.value = { cursors: next }
     notify()
   },
 
   clear() {
-    state.cursors.clear()
+    state.value = { cursors: new Map() }
     notify()
   },
 

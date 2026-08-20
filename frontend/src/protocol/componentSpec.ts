@@ -416,6 +416,22 @@ export interface ButtonConfig extends BaseComponentConfig {
   /** Convenience: executes this command on click (equivalent to an actions/click binding) */
   command?: string
   params?: Record<string, unknown>
+  /**
+   * V6: bind the button to an entity model (from /config/entities). The frontend
+   * validates/auto-collects `params` from the model's schema.
+   */
+  entityType?: string
+  /**
+   * V6: map entity fields → command params. Values are static or `$row.…`/`$values.…`
+   * context references (resolved like params). When omitted and `entityType` is set,
+   * the entity fields are passed through as-is.
+   */
+  fields?: Record<string, unknown>
+  /**
+   * V6: conditions that disable the button. Evaluated against the row/context.
+   * Example: { status: 'done' } disables the button when row.status === 'done'.
+   */
+  disabledWhen?: Record<string, unknown>
 }
 
 export type BadgeTone = 'neutral' | 'gray' | 'blue' | 'green' | 'red' | 'amber' | 'purple'
@@ -550,6 +566,12 @@ export interface TableRowAction {
   spec?: ActionSpec
   confirm?: string
   variant?: 'default' | 'danger'
+  /** V6: bind to an entity model (auto-collect params from fields). */
+  entityType?: string
+  /** V6: map row fields → command params (static or $row.… references). */
+  fields?: Record<string, unknown>
+  /** V6: conditions that disable this action for the row. */
+  disabledWhen?: Record<string, unknown>
 }
 
 export interface TablePaginationConfig {

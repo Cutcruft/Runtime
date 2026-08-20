@@ -45,6 +45,7 @@
   "tasks.col.board": "Board",
   "tasks.complete": "Complete",
   "tasks.complete.confirm": "Mark this task as done?",
+  "tasks.reopen": "Reopen",
   "tasks.create.submit": "Create Task",
   "tasks.field.title": "Title",
   "tasks.field.board": "Board",

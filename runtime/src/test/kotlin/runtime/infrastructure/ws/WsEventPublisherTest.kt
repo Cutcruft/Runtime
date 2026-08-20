@@ -11,6 +11,8 @@ import runtime.application.session.SessionManager
 import runtime.domain.entity.EntityType
 import runtime.domain.models.ProjectId
 import runtime.domain.models.RuntimeEvent
+import runtime.domain.models.Session
+import runtime.domain.models.SubscriptionFilter
 import runtime.domain.obj.ObjectId
 import runtime.infrastructure.inmem.InMemoryProjectRepository
 import runtime.infrastructure.inmem.InMemorySessionRepository
@@ -88,5 +90,67 @@ class WsEventPublisherTest {
             value = null
         )
         assertEquals(null, event.senderSessionId)
+    }
+
+    // ── Subscription filtering (pure matcher) ─────────────────────────────────
+
+    @Test
+    fun `session with matching subscription accepts object changed`() {
+        val session = Session("s1")
+        session.addSubscription(SubscriptionFilter("demo.task", mapOf("status" to "done")))
+        assertTrue(
+            WsEventPublisher.acceptsSubscription(session, "demo.task", mapOf("status" to "done"))
+        )
+    }
+
+    @Test
+    fun `session with non-matching subscription rejects object changed`() {
+        val session = Session("s1")
+        session.addSubscription(SubscriptionFilter("demo.task", mapOf("status" to "done")))
+        assertTrue(
+            !WsEventPublisher.acceptsSubscription(session, "demo.task", mapOf("status" to "open"))
+        )
+    }
+
+    @Test
+    fun `session with empty filter accepts any value`() {
+        val session = Session("s1")
+        session.addSubscription(SubscriptionFilter("demo.task"))
+        assertTrue(
+            WsEventPublisher.acceptsSubscription(session, "demo.task", mapOf("anything" to "goes"))
+        )
+    }
+
+    @Test
+    fun `session with empty filter accepts non-map value`() {
+        val session = Session("s1")
+        session.addSubscription(SubscriptionFilter("demo.task"))
+        assertTrue(WsEventPublisher.acceptsSubscription(session, "demo.task", null))
+    }
+
+    @Test
+    fun `session without subscriptions rejects object changed`() {
+        val session = Session("s1")
+        assertTrue(!WsEventPublisher.acceptsSubscription(session, "demo.task", mapOf("status" to "done")))
+    }
+
+    @Test
+    fun `subscription to other entity type is ignored`() {
+        val session = Session("s1")
+        session.addSubscription(SubscriptionFilter("demo.task", mapOf("status" to "done")))
+        assertTrue(!WsEventPublisher.acceptsSubscription(session, "demo.board", mapOf("status" to "done")))
+    }
+
+    @Test
+    fun `matching any of multiple filters accepts`() {
+        val session = Session("s1")
+        session.addSubscription(SubscriptionFilter("demo.task", mapOf("status" to "open")))
+        session.addSubscription(SubscriptionFilter("demo.task", mapOf("boardId" to "b1")))
+        assertTrue(
+            WsEventPublisher.acceptsSubscription(session, "demo.task", mapOf("boardId" to "b1"))
+        )
+        assertTrue(
+            WsEventPublisher.acceptsSubscription(session, "demo.task", mapOf("status" to "open"))
+        )
     }
 }

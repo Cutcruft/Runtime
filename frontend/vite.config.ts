@@ -1,13 +1,24 @@
 import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
+import preact from '@preact/preset-vite'
+import { vanillaExtractPlugin } from '@vanilla-extract/vite-plugin'
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [preact(), vanillaExtractPlugin()],
   root: '.',
   publicDir: 'public',
   build: {
     outDir: 'dist',
-    chunkSizeWarningLimit: 700
+    chunkSizeWarningLimit: 700,
+    rollupOptions: {
+      // Share a single Preact instance across the main bundle and plugin bundles:
+      // both resolve these from the shell's importmap (vendor/).
+      external: [
+        'preact',
+        /^preact\//,
+        '@preact/signals',
+        '@preact/signals-core',
+      ],
+    },
   },
   server: {
     proxy: {
@@ -24,3 +35,4 @@ export default defineConfig({
     }
   }
 })
+

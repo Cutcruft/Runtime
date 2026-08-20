@@ -1,14 +1,88 @@
+export interface ThemePalette {
+  bg: string
+  surface: string
+  text: string
+  muted: string
+  border: string
+  primary: string
+  primaryHover: string
+  danger: string
+  success: string
+  warning: string
+  info: string
+}
+
+export interface ThemeTypography {
+  fontFamily?: string
+  headingFont?: string
+  monospaceFont?: string
+  baseSize?: string
+  scale?: Record<string, string>
+}
+
+export interface ThemeRadii {
+  sm?: string
+  md?: string
+  lg?: string
+  xl?: string
+}
+
+export interface ThemeSpacing {
+  xs?: string
+  sm?: string
+  md?: string
+  lg?: string
+  xl?: string
+}
+
+export interface ThemeMotion {
+  duration?: Record<string, string>
+  easing?: Record<string, string>
+}
+
 export interface AppTheme {
   mode: string
   tokens: Record<string, string>
+  palette?: Record<'light' | 'dark', ThemePalette>
+  typography?: ThemeTypography
+  radii?: ThemeRadii
+  spacing?: ThemeSpacing
+  motion?: ThemeMotion
 }
 
+export interface ShellAction {
+  id: string
+  label?: string
+  icon?: string
+  action: string
+  command?: string
+  params?: Record<string, unknown>
+  page?: string
+  variant?: string
+}
+
+export interface ShellTopbar {
+  brand?: boolean
+  actions?: ShellAction[]
+}
+
+export interface ShellSidebar {
+  groups?: NavigationEntry[]
+}
+
+/** V7.4: declarative app shell (topbar/sidebar) provided by a plugin via the App definition. */
 export interface AppShell {
+  topbar?: ShellTopbar
+  sidebar?: ShellSidebar
+}
+
+export interface AppConfiguration {
   title: string
   logo: string | null
   layout: string
   landingPageId: string | null
   theme: AppTheme
+  shell?: AppShell
 }
 
 export interface NavigationEntry {
@@ -105,8 +179,29 @@ export interface CommandEntry {
   parameters?: CommandParameterEntry[]
 }
 
+export interface EntityFieldSchema {
+  name: string
+  type: string
+  required?: boolean
+  description?: string
+  enumValues?: string[]
+  min?: number
+  max?: number
+  pattern?: string
+  reference?: string
+  defaultValue?: unknown
+}
+
+export interface EntitySchema {
+  type: string
+  titleField?: string
+  idField?: string
+  fields?: EntityFieldSchema[]
+}
+
 export interface EntityEntry {
   type: string
+  schema?: EntitySchema
 }
 
 export interface MenuItemEntry {
@@ -193,7 +288,7 @@ export interface DevModeInfo {
 }
 
 export interface WorkspaceConfig {
-  app: AppShell
+  app: AppConfiguration
   navigation: NavigationEntry[]
   pages: PageDefinition[]
   shortcuts: ShortcutEntry[]

@@ -1,27 +1,28 @@
 import { defineConfig } from 'vite'
 import { resolve } from 'path'
-import vue from '@vitejs/plugin-vue'
+import preact from '@preact/preset-vite'
 
 /**
  * Builds editor plugin bundles as standalone ES modules.
- * Each editor is built with 'vue' and '@cutcrft/runtime-client' externalized.
+ * Each editor is built with preact/signals/runtime-client externalized
+ * (resolved via the shell's importmap at runtime).
  * Output: dist/editors/<name>.js
  *
  * Usage:
- *   vite build --config vite.editor-build.config.ts -- --editor canvas
- *   vite build --config vite.editor-build.config.ts -- --editor richtext
+ *   vite build --config vite.editor-build.config.ts
+ *   EDITOR=canvas vite build --config vite.editor-build.config.ts
  */
 const editorName = process.env.EDITOR || 'canvas'
 
 const editorEntryMap: Record<string, string> = {
-  canvas: resolve(__dirname, 'src/editor/UiCanvas.vue'),
-  richtext: resolve(__dirname, 'src/editor/UiRichText.vue'),
-  diagram: resolve(__dirname, 'src/editor/UiDiagram.vue'),
-  scene3d: resolve(__dirname, 'src/editor/UiScene3D.vue'),
+  canvas: resolve(__dirname, 'src/editor/UiCanvas.tsx'),
+  richtext: resolve(__dirname, 'src/editor/UiRichText.tsx'),
+  diagram: resolve(__dirname, 'src/editor/UiDiagram.tsx'),
+  scene3d: resolve(__dirname, 'src/editor/UiScene3D.tsx'),
 }
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [preact()],
   build: {
     lib: {
       entry: editorEntryMap[editorName] ?? editorEntryMap.canvas,
@@ -32,9 +33,14 @@ export default defineConfig({
     emptyOutDir: false,
     rollupOptions: {
       external: [
+        'preact',
+        /^preact\//,
+        '@preact/signals',
+        '@preact/signals-core',
+        '@cutcrft/runtime-client',
+        // Heavy editor libraries stay bundled per-editor (they are not shared).
         'vue',
         /^vue\//,
-        '@cutcrft/runtime-client',
       ],
       output: {
         preserveModules: false,

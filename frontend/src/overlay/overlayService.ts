@@ -1,4 +1,4 @@
-import { reactive } from 'vue'
+import { signal } from '@preact/signals'
 import { sessionStore } from '../store/session'
 import { toasts } from '../store/toasts'
 import { i18nStore } from '../store/i18n'
@@ -39,12 +39,8 @@ export interface GestureSource {
   row?: Record<string, unknown>
 }
 
-interface OverlayState {
-  overlays: OverlayInstance[]
-}
-
-const { state, overlayState } = globalSingleton('__cc_overlay', () => ({
-  state: reactive<OverlayState>({ overlays: [] }),
+const { overlaysSignal, overlayState } = globalSingleton('__cc_overlay', () => ({
+  overlaysSignal: signal<OverlayInstance[]>([]),
   overlayState: { uidCounter: 0 }
 }))
 
@@ -113,8 +109,11 @@ function matches(trigger: OverlayTriggerSpec, source: GestureSource): boolean {
 }
 
 export const overlayService = {
+  /** Raw signal for Preact signal integration. */
+  get overlaysSignal() { return overlaysSignal },
+
   get overlays(): OverlayInstance[] {
-    return state.overlays
+    return overlaysSignal.value
   },
 
   /** Registers local (component-level) overlay definitions. Returns an unregister fn. */
@@ -147,14 +146,13 @@ export const overlayService = {
   ): OverlayInstance | null {
     const definition = definitions.get(overlayId)
     if (!definition) return null
+    const current = overlaysSignal.value
     // Stacked menus close sibling menus; modals stack over menus.
     const closing = definition.kind === 'menu'
-      ? state.overlays.filter((o) => o.definition.kind === 'menu')
-      : state.overlays.filter((o) => o.definition.kind !== 'modal' && o.definition.kind !== 'panel')
-    closing.forEach((instance) => {
-      const index = state.overlays.indexOf(instance)
-      if (index >= 0) state.overlays.splice(index, 1)
-    })
+      ? current.filter((o) => o.definition.kind === 'menu')
+      : current.filter((o) => o.definition.kind !== 'modal' && o.definition.kind !== 'panel')
+    const closingUids = new Set(closing.map((o) => o.uid))
+    const filtered = current.filter((o) => !closingUids.has(o.uid))
     const instance: OverlayInstance = {
       uid: nextUid(),
       overlayId,
@@ -162,17 +160,16 @@ export const overlayService = {
       anchor,
       context
     }
-    state.overlays.push(instance)
+    overlaysSignal.value = [...filtered, instance]
     return instance
   },
 
   close(uid: number): void {
-    const index = state.overlays.findIndex((o) => o.uid === uid)
-    if (index >= 0) state.overlays.splice(index, 1)
+    overlaysSignal.value = overlaysSignal.value.filter((o) => o.uid !== uid)
   },
 
   closeAll(): void {
-    state.overlays.splice(0, state.overlays.length)
+    overlaysSignal.value = []
   },
 
   /** Routes a gesture (from GestureListener) to the first matching trigger. Returns true if an overlay opened. */

@@ -115,6 +115,10 @@ class CommandDispatchService(
         return sessionManager.sessionsForProject(projectId)
     }
 
+    fun getProject(projectId: ProjectId): Project? {
+        return projectService.getProject(projectId)
+    }
+
     private suspend fun broadcastLayerEvent(
         project: Project,
         commandId: String,

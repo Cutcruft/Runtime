@@ -1,9 +1,5 @@
-import { ref } from 'vue'
-
-/**
- * Animation Manager — provides CSS animation utilities for plugins.
- * Generates unique CSS class names and manages animation lifecycle.
- */
+let classCounter = 0
+let styleElement: HTMLStyleElement | null = null
 
 export interface AnimationApi {
   /** Apply a CSS animation to an element, returns a cleanup function */
@@ -25,17 +21,14 @@ export interface AnimationOptions {
   onEnd?: () => void
 }
 
-let classCounter = 0
-const styleElement = ref<HTMLStyleElement | null>(null)
-
 function ensureStyleElement(): HTMLStyleElement {
-  if (!styleElement.value) {
+  if (!styleElement) {
     const el = document.createElement('style')
     el.id = 'cc-plugin-animations'
     document.head.appendChild(el)
-    styleElement.value = el
+    styleElement = el
   }
-  return styleElement.value
+  return styleElement
 }
 
 function generateClassName(prefix: string): string {
@@ -92,8 +85,8 @@ export const animationApi: AnimationApi = {
   },
 
   clear(): void {
-    if (styleElement.value) {
-      styleElement.value.textContent = ''
+    if (styleElement) {
+      styleElement.textContent = ''
     }
   }
 }

@@ -1,15 +1,16 @@
 import { defineConfig } from 'vite'
 import { resolve } from 'path'
-import vue from '@vitejs/plugin-vue'
+import preact from '@preact/preset-vite'
+import { vanillaExtractPlugin } from '@vanilla-extract/vite-plugin'
 
 /**
  * Builds the runtime-client facade as a standalone ESM module.
- * Output: dist/plugin-assets/runtimeClient.js
+ * Output: dist/runtimeClient.js
  *
- * Vue is NOT bundled — plugin bundles resolve 'vue' via importmap.
+ * Preact + signals are NOT bundled — plugin bundles resolve them via importmap.
  */
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [preact(), vanillaExtractPlugin()],
   build: {
     lib: {
       entry: resolve(__dirname, 'src/plugin/runtimeClient.ts'),
@@ -20,8 +21,13 @@ export default defineConfig({
     emptyOutDir: false,
     rollupOptions: {
       external: [
-        'vue',
-        /^vue\//,
+        'preact',
+        'preact/compat',
+        'preact/hooks',
+        'preact/debug',
+        'preact/devtools',
+        '@preact/signals',
+        '@preact/signals/preact',
       ],
       output: {
         entryFileNames: 'runtimeClient.js',

@@ -1,25 +1,17 @@
-import { defineComponent as c, computed as n, openBlock as o, createElementBlock as s, normalizeStyle as a, unref as t, normalizeClass as d, toDisplayString as p, createCommentVNode as l } from "vue";
-import { useCfg as m } from "@cutcrft/runtime-client";
-import { _ } from "./vendor2.js";
-const f = {
-  key: 0,
-  class: "ui-divider__text"
-}, u = /* @__PURE__ */ c({
-  __name: "UiDivider",
-  props: {
-    config: {},
-    context: {}
-  },
-  setup(i) {
-    const e = m(i.config, {}), r = n(() => e.value.dashed === !0);
-    return (x, g) => (o(), s("div", {
-      class: d(["ui-divider", { "ui-divider--dashed": r.value }]),
-      style: a(t(e).style)
-    }, [
-      t(e).text ? (o(), s("span", f, p(t(e).text), 1)) : l("", !0)
-    ], 6));
-  }
-}), k = /* @__PURE__ */ _(u, [["__scopeId", "data-v-89f4ebcf"]]);
+import { jsx as i } from "preact/jsx-runtime";
+import { useCfg as a } from "@cutcrft/runtime-client";
+function d(l) {
+  const e = a(l.config, { dashed: !1 });
+  return /* @__PURE__ */ i(
+    "div",
+    {
+      class: `ui-divider${e.value.dashed ? " ui-divider--dashed" : ""}${e.value.className ? " " + e.value.className : ""}`,
+      style: e.value.style,
+      title: e.value.tooltip,
+      children: e.value.text ? /* @__PURE__ */ i("span", { class: "ui-divider__text", children: e.value.text }) : null
+    }
+  );
+}
 export {
-  k as default
+  d as default
 };

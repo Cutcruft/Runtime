@@ -12,6 +12,7 @@ import runtime.domain.repositories.InfrastructureRegistry
 import runtime.domain.repositories.SessionRepository
 import runtime.infrastructure.plugin.PluginAssetsService
 import runtime.infrastructure.web.HttpEndpoints
+import runtime.infrastructure.ws.WsEventPublisher
 
 /**
  * Orchestrates a full plugin + config reload cycle:
@@ -33,7 +34,8 @@ class RuntimeReloader(
     private val pluginAssetsService: PluginAssetsService,
     private val activeSessions: MutableMap<String, io.ktor.websocket.DefaultWebSocketSession>,
     private val sessionRepository: SessionRepository,
-    private val messages: Messages
+    private val messages: Messages,
+    private val eventPublisher: WsEventPublisher? = null
 ) {
     private val logger = Logger.getLogger(RuntimeReloader::class.java.name)
     private val reloadCount = AtomicReference(0)
@@ -74,6 +76,34 @@ class RuntimeReloader(
             // 6. Update PluginAssetsService
             pluginAssetsService.update(result.descriptors)
             logger.info("PluginAssetsService updated")
+
+            // 7. Broadcast commands.reloaded to connected sessions
+            val publisher = eventPublisher
+            if (publisher != null) {
+                kotlinx.coroutines.runBlocking {
+                    val commands = commandRegistry.all().entries.sortedBy { it.key }.map { (id, command) ->
+                        mapOf(
+                            "id" to id,
+                            "description" to command.description,
+                            "parameters" to command.parameters.map { p ->
+                                mapOf(
+                                    "name" to p.name,
+                                    "type" to p.type,
+                                    "required" to p.required,
+                                    "entityType" to p.entityType,
+                                    "enumValues" to p.enumValues,
+                                    "min" to p.min,
+                                    "max" to p.max,
+                                    "pattern" to p.pattern
+                                ).filterValues { it != null }
+                            }
+                        )
+                    }
+                    val entities = entityRegistry.list().map { it.value }
+                    publisher.broadcastCommandsReloaded(commands, entities)
+                }
+            }
+            logger.info("Broadcast commands.reloaded")
 
             logger.info("=== Reload cycle #$attempt complete ===")
         } catch (e: Exception) {

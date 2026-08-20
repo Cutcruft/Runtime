@@ -1,36 +1,22 @@
-import { defineComponent as p, ref as r, openBlock as n, createElementBlock as c, unref as t, normalizeStyle as u, normalizeClass as d, toDisplayString as f, createCommentVNode as _, createElementVNode as m } from "vue";
-import { useCfg as v, runAction as y, findAction as h } from "@cutcrft/runtime-client";
-import { _ as g } from "./vendor2.js";
-const b = ["title"], x = {
-  key: 0,
-  class: "ui-field__label"
-}, C = ["type", "value", "placeholder", "disabled"], I = /* @__PURE__ */ p({
-  __name: "UiInput",
-  props: {
-    config: {},
-    context: {}
-  },
-  setup(s) {
-    const o = s, e = v(o.config, { type: "text" }), l = r(e.value.defaultValue ?? "");
-    function i(a) {
-      l.value = a.target.value, y(h(e.value.actions, "change"), { ...o.context ?? {}, payload: { value: l.value } });
-    }
-    return (a, k) => (n(), c("label", {
-      class: d(["ui-field", t(e).className]),
-      style: u(t(e).style),
-      title: t(e).tooltip
-    }, [
-      t(e).label ? (n(), c("span", x, f(t(e).label), 1)) : _("", !0),
-      m("input", {
-        type: t(e).type,
-        value: l.value,
-        placeholder: t(e).placeholder,
-        disabled: t(e).disabled,
-        onInput: i
-      }, null, 40, C)
-    ], 14, b));
-  }
-}), A = /* @__PURE__ */ g(I, [["__scopeId", "data-v-f3742c42"]]);
+import { jsxs as t, jsx as e } from "preact/jsx-runtime";
+import { useCfg as u } from "@cutcrft/runtime-client";
+function c(a) {
+  const l = u(a.config, { type: "text", placeholder: "" });
+  return /* @__PURE__ */ t("label", { class: `ui-field${l.value.className ? " " + l.value.className : ""}`, style: l.value.style, children: [
+    l.value.label ? /* @__PURE__ */ e("span", { class: "ui-field__label", children: l.value.label }) : null,
+    /* @__PURE__ */ e(
+      "input",
+      {
+        class: "ui-input",
+        type: l.value.type ?? "text",
+        placeholder: l.value.placeholder,
+        defaultValue: l.value.defaultValue,
+        disabled: l.value.disabled,
+        title: l.value.tooltip
+      }
+    )
+  ] });
+}
 export {
-  A as default
+  c as default
 };

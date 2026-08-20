@@ -1,4 +1,5 @@
-import { onBeforeUnmount, onMounted, ref, type Ref } from 'vue'
+import { useSignal } from '@preact/signals'
+import { useEffect } from 'preact/hooks'
 
 export type ContainerSize = 'sm' | 'md' | 'lg'
 
@@ -7,33 +8,31 @@ const MD_BREAKPOINT = 768
 
 /**
  * Observes a root element and reports its width as a breakpoint size
- * (`sm` / `md` / `lg`). Bind to a template ref and use it as a class so the
- * component can switch to compact layouts when its container is narrow.
+ * (`sm` / `md` / `lg`). Returns a signal that updates on resize.
  */
-export function useContainerQuery(el: Ref<HTMLElement | null>, onChange?: (size: ContainerSize) => void): Ref<ContainerSize> {
-  const size = ref<ContainerSize>('lg')
-  let observer: ResizeObserver | null = null
+export function useContainerQuery(el: { value: HTMLElement | null }, onChange?: (size: ContainerSize) => void) {
+  const size = useSignal<ContainerSize>('lg')
 
-  function updateSize(width: number): void {
-    const next: ContainerSize = width < SM_BREAKPOINT ? 'sm' : width < MD_BREAKPOINT ? 'md' : 'lg'
-    if (next !== size.value) {
-      size.value = next
-      onChange?.(next)
+  useEffect(() => {
+    const element = el.value
+    if (!element) return
+
+    function updateSize(width: number): void {
+      const next: ContainerSize = width < SM_BREAKPOINT ? 'sm' : width < MD_BREAKPOINT ? 'md' : 'lg'
+      if (next !== size.value) {
+        size.value = next
+        onChange?.(next)
+      }
     }
-  }
 
-  onMounted(() => {
-    if (!el.value) return
-    updateSize(el.value.getBoundingClientRect().width)
-    observer = new ResizeObserver((entries) => {
+    updateSize(element.getBoundingClientRect().width)
+    const observer = new ResizeObserver((entries) => {
       for (const entry of entries) updateSize(entry.contentRect.width)
     })
-    observer.observe(el.value)
-  })
+    observer.observe(element)
 
-  onBeforeUnmount(() => {
-    observer?.disconnect()
-  })
+    return () => observer.disconnect()
+  }, [])
 
   return size
 }

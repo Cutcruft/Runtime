@@ -6,5 +6,10 @@
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true
   },
-  "include": ["vite.config.ts"]
+  "include": [
+    "vite.config.ts",
+    "vite.runtime-client.config.ts",
+    "vite.editor-build.config.ts",
+    ".storybook/*.ts"
+  ]
 }

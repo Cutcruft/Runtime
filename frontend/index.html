@@ -7,7 +7,12 @@
   <script type="importmap">
   {
     "imports": {
-      "vue": "/vendor/vue.esm-browser.js",
+      "preact": "/vendor/preact.module.js",
+      "preact/hooks": "/vendor/preact-hooks.module.js",
+      "preact/compat": "/vendor/compat.module.js",
+      "preact/jsx-runtime": "/vendor/jsx-runtime.module.js",
+      "@preact/signals": "/vendor/signals.module.js",
+      "@preact/signals-core": "/vendor/signals-core.module.js",
       "@cutcrft/runtime-client": "/runtimeClient.js"
     }
   }
@@ -15,6 +20,6 @@
 </head>
 <body>
   <div id="app"></div>
-  <script type="module" src="/src/main.ts"></script>
+  <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>

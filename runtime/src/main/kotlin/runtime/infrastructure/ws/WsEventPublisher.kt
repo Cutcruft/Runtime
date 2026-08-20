@@ -1,5 +1,7 @@
 package runtime.infrastructure.ws
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.KotlinModule
 import java.util.concurrent.ConcurrentHashMap
 import io.ktor.websocket.DefaultWebSocketSession
 import io.ktor.websocket.Frame
@@ -8,6 +10,7 @@ import runtime.application.event.EventPublisher
 import runtime.application.session.SessionManager
 import runtime.domain.models.ProjectId
 import runtime.domain.models.RuntimeEvent
+import runtime.domain.models.Session
 
 class WsEventPublisher(
     private val sessionManager: SessionManager,
@@ -32,8 +35,8 @@ class WsEventPublisher(
             is RuntimeEvent.ObjectChanged -> {
                 val sessions = sessionManager.sessionsForProject(event.projectId)
                 for (session in sessions) {
-                    if (session.sessionId == event.senderSessionId) continue
                     val webSocket = activeSessions[session.sessionId] ?: continue
+                    if (!sessionAccepts(session, event)) continue
                     val envelope = WsEnvelope(
                         type = WsMessageType.OBJECT_CHANGED.value,
                         payload = mapOf(
@@ -59,6 +62,42 @@ class WsEventPublisher(
         }
     }
 
+    /**
+     * A session receives an object.changed only if it has subscribed to the entity type
+     * and the event value matches at least one of its subscription filters (when a filter
+     * is non-empty). Sessions with no subscriptions receive nothing (opt-in).
+     */
+    private fun sessionAccepts(session: Session, event: RuntimeEvent.ObjectChanged): Boolean {
+        return acceptsSubscription(session, event.entityType.value, event.value)
+    }
+
+    companion object {
+        private val mapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
+
+        /** Coerces a raw event value (data object, list, map, primitive) into a Map for filter matching. */
+        private fun asMap(value: Any?): Map<*, *>? {
+            return when (value) {
+                is Map<*, *> -> value
+                is List<*> -> null
+                null -> null
+                else -> runCatching { mapper.convertValue(value, Map::class.java) as Map<*, *> }.getOrNull()
+            }
+        }
+
+        /** Pure filter matcher: used by the publisher and unit tests. */
+        fun acceptsSubscription(session: Session, entityType: String, value: Any?): Boolean {
+            val filters = session.subscriptions[entityType] ?: return false
+            if (filters.isEmpty()) return true
+            val map = asMap(value) ?: return filters.any { it.filter.isEmpty() }
+            return filters.any { filter ->
+                if (filter.filter.isEmpty()) return@any true
+                filter.filter.all { (key, expected) ->
+                    map[key]?.toString() == expected?.toString()
+                }
+            }
+        }
+    }
+
     suspend fun broadcastToProject(projectId: ProjectId, envelope: WsEnvelope) {
         val sessions = sessionManager.sessionsForProject(projectId)
         for (session in sessions) {
@@ -70,5 +109,16 @@ class WsEventPublisher(
     suspend fun sendToSession(sessionId: String, envelope: WsEnvelope) {
         val webSocket = activeSessions[sessionId] ?: return
         webSocket.send(Frame.Text(WsProtocol.encode(envelope)))
+    }
+
+    /** Broadcasts a commands.reloaded envelope to all active sessions (after plugin reload). */
+    suspend fun broadcastCommandsReloaded(commands: List<Map<String, Any?>>, entities: List<String>) {
+        val envelope = WsEnvelope(
+            type = WsMessageType.COMMANDS_RELOADED.value,
+            payload = mapOf("commands" to commands, "entities" to entities)
+        )
+        for (webSocket in activeSessions.values) {
+            webSocket.send(Frame.Text(WsProtocol.encode(envelope)))
+        }
     }
 }

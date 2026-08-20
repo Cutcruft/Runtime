@@ -26,10 +26,12 @@ class PluginManager(
         val loaded = mutableListOf<PluginId>()
         for (descriptor in result.sorted) {
             try {
-                val plugin = instantiate(descriptor)
-                val context = createContext(descriptor.id)
-                plugin.initialize(context)
-                plugin.start()
+                if (descriptor.mainClass != null) {
+                    val plugin = instantiate(descriptor)
+                    val context = createContext(descriptor.id)
+                    plugin.initialize(context)
+                    plugin.start()
+                }
                 loaded += descriptor.id
             } catch (e: Exception) {
                 throw IllegalStateException(

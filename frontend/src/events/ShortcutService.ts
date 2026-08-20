@@ -1,4 +1,4 @@
-import { reactive } from 'vue'
+import { signal } from '@preact/signals'
 import { emitEvent } from './eventBus'
 import { pageStore } from '../store/page'
 import type { ShortcutEntry } from '../protocol/types'
@@ -14,8 +14,8 @@ interface ShortcutContext {
   dispatch: (entry: ShortcutEntry) => void
 }
 
-const { active, shortcutState } = globalSingleton('__cc_shortcut', () => ({
-  active: reactive(new Map<string, ActiveShortcut>()),
+const { activeMap, shortcutState } = globalSingleton('__cc_shortcut', () => ({
+  activeMap: signal(new Map<string, ActiveShortcut>()),
   shortcutState: { context: null as ShortcutContext | null }
 }))
 
@@ -85,7 +85,8 @@ export function initShortcuts(ctx: ShortcutContext): () => void {
     const target = event.target as HTMLElement | null
     if (target && isEditable(target)) return
 
-    for (const activeShortcut of [...active.values()]) {
+    const current = activeMap.value
+    for (const activeShortcut of [...current.values()]) {
       if (!isShortcutActive(activeShortcut)) continue
       const match = activeShortcut.entry.keys.some((combo) => matchesCombo(combo, event))
       if (!match) continue
@@ -99,22 +100,33 @@ export function initShortcuts(ctx: ShortcutContext): () => void {
 }
 
 export function registerShortcut(entry: ShortcutEntry): () => void {
-  const existing = active.get(entry.id)
-  active.set(entry.id, {
+  const current = activeMap.value
+  const existing = current.get(entry.id)
+  const next = new Map(current)
+  next.set(entry.id, {
     entry,
     mounted: existing?.mounted ?? entry.scope !== 'component'
   })
+  activeMap.value = next
   return () => {
-    active.delete(entry.id)
+    const cur = activeMap.value
+    const n = new Map(cur)
+    n.delete(entry.id)
+    activeMap.value = n
   }
 }
 
 export function mountShortcut(entry: ShortcutEntry): () => void {
-  active.set(entry.id, { entry, mounted: true })
+  const current = activeMap.value
+  const next = new Map(current)
+  next.set(entry.id, { entry, mounted: true })
+  activeMap.value = next
   return () => {
-    const current = active.get(entry.id)
-    if (current && current.entry.id === entry.id) {
-      active.delete(entry.id)
+    const cur = activeMap.value
+    if (cur.get(entry.id)?.entry.id === entry.id) {
+      const n = new Map(cur)
+      n.delete(entry.id)
+      activeMap.value = n
     }
   }
 }
@@ -148,14 +160,17 @@ function isEditable(target: HTMLElement): boolean {
 
 /** List all registered shortcuts (for runtime UI / settings panel). */
 export function listShortcuts(): ShortcutEntry[] {
-  return [...active.values()].map((s) => s.entry)
+  return [...activeMap.value.values()].map((s) => s.entry)
 }
 
 /** Reassign keys for an existing shortcut by ID. Returns true if found. */
 export function reassignShortcut(id: string, newKeys: string[]): boolean {
-  const existing = active.get(id)
+  const current = activeMap.value
+  const existing = current.get(id)
   if (!existing) return false
-  existing.entry = { ...existing.entry, keys: newKeys }
+  const next = new Map(current)
+  next.set(id, { ...existing, entry: { ...existing.entry, keys: newKeys } })
+  activeMap.value = next
   return true
 }
 

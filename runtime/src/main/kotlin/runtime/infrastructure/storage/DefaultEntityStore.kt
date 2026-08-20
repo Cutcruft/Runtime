@@ -193,7 +193,12 @@ class DefaultEntityStore(
     }
 
     private fun markDirty(projectId: ProjectId, entityType: EntityType) {
-        if (cold != null) dirty[ProjectTypeKey(projectId.value, entityType.value)] = Unit
+        if (cold == null) return
+        dirty[ProjectTypeKey(projectId.value, entityType.value)] = Unit
+        // Write-through: persist the bucket immediately so data survives a restart
+        // (files/redis/db backends) without waiting for a graceful shutdown flush.
+        flushTypeLocked(projectId, entityType)
+        dirty.remove(ProjectTypeKey(projectId.value, entityType.value))
     }
 
     private fun ensureLoaded(projectId: ProjectId, entityType: EntityType) {
@@ -240,9 +245,9 @@ class DefaultEntityStore(
             .map { ObjectId(it.key.objectId) to it.value }
             .toList()
         if (cold == null) return
-        val merged = LinkedHashMap<ObjectId, Any>()
-        cold.load(projectId, entityType).forEach { (objectId, value) -> merged[objectId] = value }
-        hotEntries.forEach { (objectId, value) -> merged[objectId] = value }
-        cold.persist(projectId, entityType, merged.entries.map { it.key to it.value })
+        // In write-through mode the hot layer is authoritative (it is loaded from the
+        // cold backend on access), so persist exactly the current hot state — this
+        // correctly reflects deletes without resurrecting removed objects.
+        cold.persist(projectId, entityType, hotEntries)
     }
 }

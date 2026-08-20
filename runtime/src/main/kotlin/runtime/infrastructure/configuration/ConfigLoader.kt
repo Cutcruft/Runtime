@@ -20,6 +20,11 @@ import runtime.domain.models.RoutingConfig
 import runtime.domain.models.ServerConfig
 import runtime.domain.models.StorageConfig
 import runtime.domain.models.ThemeConfig
+import runtime.domain.models.ThemeMotion
+import runtime.domain.models.ThemePalette
+import runtime.domain.models.ThemeRadii
+import runtime.domain.models.ThemeSpacing
+import runtime.domain.models.ThemeTypography
 import runtime.domain.models.UiConfig
 import runtime.domain.models.WsConfig
 
@@ -161,11 +166,7 @@ class ConfigLoader(
                     logo = section(ui, "appFields")["logo"] as String,
                     layout = section(ui, "appFields")["layout"] as String
                 ),
-                theme = ThemeConfig(
-                    mode = section(ui, "theme")["mode"] as String,
-                    tokens = (section(ui, "theme")["tokens"] as? Map<*, *> ?: emptyMap<Any?, Any?>())
-                        .entries.associate { it.key.toString() to it.value.toString() }
-                )
+                theme = parseTheme(section(ui, "theme"))
             ),
             messages = section(map, "messages").mapValues { (_, value) -> value.toString() },
             i18n = I18nConfig(
@@ -187,6 +188,74 @@ class ConfigLoader(
     @Suppress("UNCHECKED_CAST")
     private fun section(map: Map<String, Any>, key: String): Map<String, Any> =
         (map[key] as? Map<String, Any>) ?: emptyMap()
+
+    @Suppress("UNCHECKED_CAST")
+    private fun parseTheme(theme: Map<String, Any>): ThemeConfig {
+        val paletteRaw = theme["palette"] as? Map<String, Any> ?: emptyMap()
+        val palette = paletteRaw.mapNotNull { (modeName, raw) ->
+            val p = raw as? Map<String, Any> ?: return@mapNotNull null
+            ThemePalette(
+                bg = p["bg"] as? String ?: "",
+                surface = p["surface"] as? String ?: "",
+                text = p["text"] as? String ?: "",
+                muted = p["muted"] as? String ?: "",
+                border = p["border"] as? String ?: "",
+                primary = p["primary"] as? String ?: "",
+                primaryHover = p["primaryHover"] as? String ?: "",
+                danger = p["danger"] as? String ?: "",
+                success = p["success"] as? String ?: "",
+                warning = p["warning"] as? String ?: "",
+                info = p["info"] as? String ?: ""
+            ).let { modeName to it }
+        }.toMap()
+
+        val typographyRaw = theme["typography"] as? Map<String, Any> ?: emptyMap()
+        val typography = ThemeTypography(
+            fontFamily = typographyRaw["fontFamily"] as? String ?: ThemeTypography().fontFamily,
+            headingFont = typographyRaw["headingFont"] as? String,
+            monospaceFont = typographyRaw["monospaceFont"] as? String ?: ThemeTypography().monospaceFont,
+            baseSize = typographyRaw["baseSize"] as? String ?: ThemeTypography().baseSize,
+            scale = stringMap(typographyRaw["scale"])
+        )
+
+        val radiiRaw = theme["radii"] as? Map<String, Any> ?: emptyMap()
+        val radii = ThemeRadii(
+            sm = radiiRaw["sm"] as? String ?: "6px",
+            md = radiiRaw["md"] as? String ?: "8px",
+            lg = radiiRaw["lg"] as? String ?: "12px",
+            xl = radiiRaw["xl"] as? String ?: "16px"
+        )
+
+        val spacingRaw = theme["spacing"] as? Map<String, Any> ?: emptyMap()
+        val spacing = ThemeSpacing(
+            xs = spacingRaw["xs"] as? String ?: "4px",
+            sm = spacingRaw["sm"] as? String ?: "8px",
+            md = spacingRaw["md"] as? String ?: "12px",
+            lg = spacingRaw["lg"] as? String ?: "20px",
+            xl = spacingRaw["xl"] as? String ?: "32px"
+        )
+
+        val motionRaw = theme["motion"] as? Map<String, Any> ?: emptyMap()
+        val motion = ThemeMotion(
+            duration = stringMap(motionRaw["duration"]),
+            easing = stringMap(motionRaw["easing"])
+        )
+
+        return ThemeConfig(
+            mode = theme["mode"] as? String ?: "light",
+            tokens = stringMap(theme["tokens"]),
+            palette = palette,
+            typography = typography,
+            radii = radii,
+            spacing = spacing,
+            motion = motion
+        )
+    }
+
+    private fun stringMap(raw: Any?): Map<String, String> {
+        val map = raw as? Map<*, *> ?: return emptyMap()
+        return map.entries.associate { it.key.toString() to it.value.toString() }
+    }
 
     @Suppress("UNCHECKED_CAST")
     private fun mergeDeep(base: Map<String, Any>, override: Map<String, Any>): Map<String, Any> {

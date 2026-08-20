@@ -32,14 +32,15 @@ plugin: sdk
 
 plugins: sdk plugin
 	@for d in builtin-ui editor-canvas editor-diagram editor-richtext editor-scene3d; do \
-		pom="$(PLUGINS_DIR)/$$d/pom.xml"; \
+		pom="plugins/$$d/pom.xml"; \
 		if [ -f "$$pom" ]; then \
 			echo "Building $$d..."; \
 			mvn -f "$$pom" -q package -DskipTests 2>/dev/null; \
 			mkdir -p "$(PLUGINS_DIR)/$$d"; \
-			jar=$$(ls "$(PLUGINS_DIR)/$$d/target/"*.jar 2>/dev/null | head -1); \
+			jar=$$(ls "plugins/$$d/target/"*.jar 2>/dev/null | head -1); \
 			if [ -n "$$jar" ]; then \
 				cp "$$jar" "$(PLUGINS_DIR)/$$d/$$(basename $$jar)"; \
+				[ -f "plugins/$$d/config.yaml" ] && cp "plugins/$$d/config.yaml" "$(PLUGINS_DIR)/$$d/" || true; \
 				echo "  -> installed $$(basename $$jar)"; \
 			fi; \
 		fi; \
@@ -55,7 +56,7 @@ dev:
 	cp -r $(FRONTEND_DIR)/dist/* $(BACKEND_STATIC)/ 2>/dev/null || true
 	$(MAKE) plugins
 	mvn -q install -DskipTests
-	mvn -f $(RUNTIME_POM) exec:java -Dexec.mainClass=runtime.MainKt -Dexec.classpathScope=runtime
+	RUNTIME_CONFIG=$$(pwd)/config/application.yaml mvn -f $(RUNTIME_POM) exec:java -Dexec.mainClass=runtime.MainKt -Dexec.classpathScope=runtime
 
 clean:
 	mvn clean

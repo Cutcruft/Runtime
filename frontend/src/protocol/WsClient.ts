@@ -12,6 +12,13 @@ const DEFAULT_TIMEOUT_MS = 20000
 const RECONNECT_BASE_MS = 1000
 const RECONNECT_MAX_MS = 10000
 
+export interface WsClientOptions {
+  /** Workspace id carried in the WS URL (/ws/<workspace> or /ws/<workspace>/<projectId>). */
+  workspaceId?: string
+  /** Project id carried in the WS URL (/ws/<workspace>/<projectId>). Binds the session server-side. */
+  projectId?: string
+}
+
 export class WsClient {
   private socket: WebSocket | null = null
   private readonly pending = new Map<string, PendingRequest>()
@@ -24,8 +31,8 @@ export class WsClient {
   onStatusChange: ((status: WsStatus) => void) | null = null
   onEvent: ((envelope: WsEnvelope) => void) | null = null
 
-  constructor(wsPath: string) {
-    this.url = buildWsUrl(wsPath)
+  constructor(wsPath: string, options: WsClientOptions = {}) {
+    this.url = buildWsUrl(wsPath, options)
   }
 
   connect(): void {
@@ -78,6 +85,16 @@ export class WsClient {
         })
       )
     })
+  }
+
+  /** Subscribes to object.changed for an entity type with an optional server-side filter. */
+  subscribe(entityType: string, filter?: Record<string, unknown>): void {
+    this.sendRaw(WS_MESSAGE_TYPES.SUBSCRIBE, { entityType, ...(filter ? { filter } : {}) })
+  }
+
+  /** Unsubscribes from object.changed for an entity type (optionally matching a filter). */
+  unsubscribe(entityType: string, filter?: Record<string, unknown>): void {
+    this.sendRaw(WS_MESSAGE_TYPES.UNSUBSCRIBE, { entityType, ...(filter ? { filter } : {}) })
   }
 
   sendRaw(type: string, payload: Record<string, unknown>): void {
@@ -163,9 +180,16 @@ export class WsClient {
   }
 }
 
-function buildWsUrl(wsPath: string): string {
+function buildWsUrl(wsPath: string, options: WsClientOptions): string {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${window.location.host}${wsPath}`
+  let path = wsPath
+  if (options.workspaceId) {
+    path = `${path.replace(/\/$/, '')}/${encodeURIComponent(options.workspaceId)}`
+  }
+  if (options.workspaceId && options.projectId) {
+    path = `${path}/${encodeURIComponent(options.projectId)}`
+  }
+  return `${protocol}//${window.location.host}${path}`
 }
 
 function generateRequestId(): string {

@@ -1,32 +1,33 @@
-import { defineComponent as c, computed as r, openBlock as i, createBlock as p, resolveDynamicComponent as u, unref as e, normalizeStyle as f, normalizeClass as m, withCtx as x, createTextVNode as d, toDisplayString as _ } from "vue";
-import { useCfg as g, useData as v, formatValue as y } from "@cutcrft/runtime-client";
-import { _ as C } from "./vendor2.js";
-const T = /* @__PURE__ */ c({
-  __name: "UiText",
-  props: {
-    config: {},
-    context: {}
-  },
-  setup(n) {
-    const o = n, t = g(o.config, { tag: "p", text: "", align: "left" }), { value: s } = v(
-      () => t.value.data,
-      () => o.context ?? {}
-    ), l = r(() => {
-      const a = t.value.text;
-      return a || (t.value.data ? y(s.value) : "");
-    });
-    return (a, D) => (i(), p(u(e(t).tag ?? "p"), {
-      class: m(["ui-text", e(t).className]),
-      style: f({ textAlign: e(t).align, ...e(t).style ?? {} }),
-      title: e(t).tooltip
-    }, {
-      default: x(() => [
-        d(_(l.value), 1)
-      ]),
-      _: 1
-    }, 8, ["class", "style", "title"]));
+import { jsx as l } from "preact/jsx-runtime";
+import { useCfg as u, useData as i, formatValue as o } from "@cutcrft/runtime-client";
+function v(n) {
+  const e = u(n.config, { tag: "p", text: "", align: "left" }), { value: c } = i(
+    () => e.value.data,
+    () => n.context ?? {}
+  ), t = e.value.text || (e.value.data ? o(c.value) : ""), r = e.value.tag ?? "p", s = { textAlign: e.value.align, ...e.value.style ?? {} }, a = {
+    class: `ui-text${e.value.className ? " " + e.value.className : ""}`,
+    style: s,
+    title: e.value.tooltip
+  };
+  switch (r) {
+    case "h1":
+      return /* @__PURE__ */ l("h1", { ...a, children: t });
+    case "h2":
+      return /* @__PURE__ */ l("h2", { ...a, children: t });
+    case "h3":
+      return /* @__PURE__ */ l("h3", { ...a, children: t });
+    case "h4":
+      return /* @__PURE__ */ l("h4", { ...a, children: t });
+    case "span":
+      return /* @__PURE__ */ l("span", { ...a, children: t });
+    case "div":
+      return /* @__PURE__ */ l("div", { ...a, children: t });
+    case "label":
+      return /* @__PURE__ */ l("label", { ...a, children: t });
+    default:
+      return /* @__PURE__ */ l("p", { ...a, children: t });
   }
-}), B = /* @__PURE__ */ C(T, [["__scopeId", "data-v-96d612dd"]]);
+}
 export {
-  B as default
+  v as default
 };

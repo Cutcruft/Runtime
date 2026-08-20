@@ -1,66 +1,45 @@
-import { defineComponent as y, ref as r, onMounted as b, openBlock as a, createElementBlock as s, unref as o, normalizeStyle as C, normalizeClass as x, toDisplayString as f, createCommentVNode as h, withDirectives as V, createElementVNode as v, Fragment as k, renderList as A, vModelSelect as K } from "vue";
-import { useCfg as U, sessionStore as w, runAction as E, findAction as N } from "@cutcrft/runtime-client";
-import { _ as z } from "./vendor2.js";
-const B = ["title"], D = {
-  key: 0,
-  class: "ui-field__label"
-}, L = ["disabled"], M = ["value"], F = /* @__PURE__ */ y({
-  __name: "UiSelect",
-  props: {
-    config: {},
-    context: {}
-  },
-  setup(p) {
-    const u = p, n = U(u.config, {}), i = r(n.value.defaultValue ?? ""), c = r([]), d = r(!1);
-    async function m() {
-      const e = n.value.options;
-      if (!(!e || d.value)) {
-        try {
-          const t = await w.execute(e.command, e.params ?? {});
-          t.status === "SUCCESS" && Array.isArray(t.value) && (c.value = t.value);
-        } catch {
-        }
-        d.value = !0;
-      }
-    }
-    b(m);
-    function _(e) {
-      const t = n.value.options;
-      if (!t) return String(e);
-      const l = t.valueKey;
-      return l in e ? String(e[l]) : String(e);
-    }
-    function S(e) {
-      const t = n.value.options;
-      if (!t) return String(e);
-      const l = t.labelKey;
-      return l in e ? String(e[l]) : String(e);
-    }
-    function g() {
-      E(N(n.value.actions, "change"), { ...u.context ?? {}, payload: { value: i.value } });
-    }
-    return (e, t) => (a(), s("label", {
-      class: x(["ui-field", o(n).className]),
-      style: C(o(n).style),
-      title: o(n).tooltip
-    }, [
-      o(n).label ? (a(), s("span", D, f(o(n).label), 1)) : h("", !0),
-      V(v("select", {
-        "onUpdate:modelValue": t[0] || (t[0] = (l) => i.value = l),
-        disabled: o(n).disabled,
-        onChange: g
-      }, [
-        t[1] || (t[1] = v("option", { value: "" }, "—", -1)),
-        (a(!0), s(k, null, A(c.value, (l) => (a(), s("option", {
-          key: String(l),
-          value: _(l)
-        }, f(S(l)), 9, M))), 128))
-      ], 40, L), [
-        [K, i.value]
-      ])
-    ], 14, B));
+import { jsxs as v, jsx as u } from "preact/jsx-runtime";
+import { useSignal as i } from "@preact/signals";
+import { useCfg as g, sessionStore as m, runAction as S, findAction as p } from "@cutcrft/runtime-client";
+import { useEffect as y } from "preact/hooks";
+function C(s) {
+  const l = g(s.config, {}), n = i(l.value.defaultValue ?? ""), o = i([]), r = i(!1);
+  y(() => {
+    const e = l.value.options;
+    !e || r.value || m.execute(e.command, e.params ?? {}).then((a) => {
+      a.status === "SUCCESS" && Array.isArray(a.value) && (o.value = a.value);
+    }).catch(() => {
+    }).finally(() => {
+      r.value = !0;
+    });
+  }, [l.value.options]);
+  function c(e) {
+    const a = l.value.options;
+    if (!a) return String(e);
+    const t = a.valueKey;
+    return t in e ? String(e[t]) : String(e);
   }
-}), q = /* @__PURE__ */ z(F, [["__scopeId", "data-v-bd6e8a85"]]);
+  function f(e) {
+    const a = l.value.options;
+    if (!a) return String(e);
+    const t = a.labelKey;
+    return t in e ? String(e[t]) : String(e);
+  }
+  function d(e) {
+    const a = e.target;
+    n.value = a.value, S(p(l.value.actions, "change"), {
+      ...s.context ?? {},
+      payload: { value: n.value }
+    });
+  }
+  return /* @__PURE__ */ v("label", { class: `ui-field${l.value.className ? " " + l.value.className : ""}`, style: l.value.style, title: l.value.tooltip, children: [
+    l.value.label ? /* @__PURE__ */ u("span", { class: "ui-field__label", children: l.value.label }) : null,
+    /* @__PURE__ */ v("select", { value: n.value, disabled: l.value.disabled, onChange: d, children: [
+      /* @__PURE__ */ u("option", { value: "", children: "—" }),
+      o.value.map((e) => /* @__PURE__ */ u("option", { value: c(e), children: f(e) }, c(e)))
+    ] })
+  ] });
+}
 export {
-  q as default
+  C as default
 };

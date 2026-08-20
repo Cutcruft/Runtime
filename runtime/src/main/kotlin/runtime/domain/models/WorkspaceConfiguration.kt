@@ -50,12 +50,46 @@ data class I18nConfiguration(
     val messages: Map<String, Map<String, String>>
 )
 
+/** One action (button) in the app shell — rendered by the core from the plugin's declaration. */
+data class ShellAction(
+    val id: String,
+    val label: String? = null,
+    val icon: String? = null,
+    val action: String = "command",
+    val command: String? = null,
+    val params: Map<String, Any>? = null,
+    val page: String? = null,
+    val variant: String? = null
+)
+
+/** Declarative top bar — plugin-provided via the App UI definition. */
+data class ShellTopbar(
+    val brand: Boolean = true,
+    val actions: List<ShellAction> = emptyList()
+)
+
+/** Declarative sidebar — plugin-provided via the App UI definition. */
+data class ShellSidebar(
+    val groups: List<NavigationEntry> = emptyList()
+)
+
+/**
+ * V7.4 — declarative app shell. The plugin describes its own chrome (topbar/sidebar)
+ * through the App UI definition; the core renders it without hardcoding buttons.
+ * When empty, the core falls back to the built-in shell.
+ */
+data class AppShell(
+    val topbar: ShellTopbar = ShellTopbar(),
+    val sidebar: ShellSidebar = ShellSidebar()
+)
+
 data class AppConfiguration(
     val title: String,
     val logo: String?,
     val layout: String,
     val landingPageId: String?,
-    val theme: ThemeConfig
+    val theme: ThemeConfig,
+    val shell: AppShell = AppShell()
 )
 
 data class NavigationEntry(
@@ -171,7 +205,9 @@ data class ProtocolMessageDoc(
 )
 
 data class EntityEntry(
-    val type: String
+    val type: String,
+    /** Declarative field schema (when the entity is schema-driven). */
+    val schema: Map<String, Any>? = null
 )
 
 /** Declarative overlay: context menu, modal, side panel or tooltip. */

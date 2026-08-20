@@ -1,4 +1,4 @@
-import { reactive } from 'vue'
+import { signal } from '@preact/signals'
 import type { PageDefinition, LayerDefinition } from '../protocol/types'
 import { globalSingleton } from '../utils/globalSingleton'
 
@@ -8,15 +8,20 @@ import { globalSingleton } from '../utils/globalSingleton'
  */
 function createLayerStore() {
   /** pageId → (layerId → visible override) */
-  const overrides = globalSingleton('__cc_layer', () => reactive(new Map<string, Map<string, boolean>>()))
+  const overrides = globalSingleton('__cc_layer', () => signal(new Map<string, Map<string, boolean>>()))
 
   function setVisible(pageId: string, layerId: string, visible: boolean) {
-    let pageMap = overrides.get(pageId)
+    const current = new Map(overrides.value)
+    let pageMap = current.get(pageId)
     if (!pageMap) {
       pageMap = new Map()
-      overrides.set(pageId, pageMap)
+      current.set(pageId, pageMap)
+    } else {
+      pageMap = new Map(pageMap)
+      current.set(pageId, pageMap)
     }
     pageMap.set(layerId, visible)
+    overrides.value = current
   }
 
   function toggle(pageId: string, layerId: string): boolean {
@@ -26,7 +31,7 @@ function createLayerStore() {
   }
 
   function isVisible(pageId: string, layerId: string, configDefault: boolean): boolean {
-    return overrides.get(pageId)?.get(layerId) ?? configDefault
+    return overrides.value.get(pageId)?.get(layerId) ?? configDefault
   }
 
   function isLayerVisible(pageId: string, layer: LayerDefinition): boolean {

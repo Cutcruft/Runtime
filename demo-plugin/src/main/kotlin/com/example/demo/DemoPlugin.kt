@@ -31,6 +31,7 @@ class DemoPlugin : Plugin() {
         context.registerCommand(CreateTaskCommand())
         context.registerCommand(ListTasksCommand())
         context.registerCommand(CompleteTaskCommand())
+        context.registerCommand(ReopenTaskCommand())
         context.registerCommand(DeleteTaskCommand())
         context.registerCommand(TaskStatsCommand())
         context.registerCommand(TaskReportCommand())
@@ -69,7 +70,16 @@ class DemoPlugin : Plugin() {
                 mapOf(
                     "title" to "{{demo.app.title}}",
                     "logo" to "logo.png",
-                    "layout" to "sidebar"
+                    "layout" to "sidebar",
+                    "shell" to mapOf(
+                        "topbar" to mapOf(
+                            "brand" to true,
+                            "actions" to listOf(
+                                mapOf("id" to "nav-tasks", "icon" to "☑", "label" to "{{demo.page.tasks}}", "action" to "navigate", "page" to "tasks"),
+                                mapOf("id" to "nav-boards", "icon" to "▦", "label" to "{{demo.page.boards}}", "action" to "navigate", "page" to "boards")
+                            )
+                        )
+                    )
                 )
             )
         )
@@ -354,6 +364,13 @@ class DemoPlugin : Plugin() {
                                                 "command" to "demo.complete",
                                                 "params" to mapOf("id" to "\$row.id"),
                                                 "confirm" to "{{demo.tasks.complete.confirm}}"
+                                            ),
+                                            mapOf(
+                                                "label" to "{{demo.tasks.reopen}}",
+                                                "command" to "demo.reopentask",
+                                                "entityType" to "demo.task",
+                                                "fields" to mapOf("id" to "\$row.id"),
+                                                "disabledWhen" to mapOf("status" to "open")
                                             )
                                         ),
                                         "columns" to listOf(
@@ -830,7 +847,7 @@ class DemoPlugin : Plugin() {
                             "columns" to 1,
                             "components" to listOf(
                                 mapOf(
-                                    "type" to "canvas2d",
+                                    "type" to "canvas",
                                     "config" to mapOf(
                                         "id" to "board-editor",
                                         "content" to mapOf("command" to "demo.loaddocument", "params" to mapOf("id" to DOC_BOARD)),

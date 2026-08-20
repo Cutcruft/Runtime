@@ -7,7 +7,8 @@ data class PluginDescriptor(
     val id: PluginId,
     val version: PluginVersion,
     val apiVersion: Int,
-    val mainClass: String,
+    /** Kotlin main class; `null` for YAML-only plugins. */
+    val mainClass: String?,
     val dependencies: List<PluginDependency> = emptyList(),
     val jarPath: String
 )

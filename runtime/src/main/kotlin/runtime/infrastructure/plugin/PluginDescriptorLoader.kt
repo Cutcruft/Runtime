@@ -22,7 +22,7 @@ class PluginDescriptorLoader(
         val id = PluginId(map["id"] as String)
         val version = PluginVersion(map["version"] as String)
         val apiVersion = (map["apiVersion"] as? Number)?.toInt() ?: defaultApiVersion
-        val mainClass = map["main"] as String
+        val mainClass = map["main"] as? String
         val deps = (map["dependencies"] as? List<Map<String, Any>>)?.map { dep ->
             PluginDependency(
                 PluginId(dep["plugin"] as String),
@@ -34,6 +34,11 @@ class PluginDescriptorLoader(
             val jars = File(pluginDir).listFiles { f -> f.extension == "jar" }
             if (jars != null && jars.size == 1) {
                 return PluginDescriptor(id, version, apiVersion, mainClass, deps, jars[0].absolutePath)
+            }
+            // YAML-only plugin (dev mode): use the directory itself as the "jar path"
+            // so YamlResourceLoader can read from <dir>/yaml/.
+            if (File(pluginDir, "yaml").isDirectory) {
+                return PluginDescriptor(id, version, apiVersion, mainClass, deps, pluginDir)
             }
             throw IllegalArgumentException("Plugin JAR not found in $pluginDir")
         }

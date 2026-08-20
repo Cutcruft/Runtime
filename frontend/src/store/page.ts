@@ -1,4 +1,4 @@
-import { ref, watch } from 'vue'
+import { signal, effect } from '@preact/signals'
 import { configStore } from './config'
 import { globalSingleton } from '../utils/globalSingleton'
 
@@ -6,10 +6,10 @@ const STORAGE_KEY = 'cc.openPages'
 const STORAGE_ACTIVE = 'cc.activePage'
 
 const { activePageId, openPages, backStack, forwardStack } = globalSingleton('__cc_page', () => ({
-  activePageId: ref<string | null>(null),
-  openPages: ref<string[]>([]),
-  backStack: ref<string[]>([]),
-  forwardStack: ref<string[]>([])
+  activePageId: signal<string | null>(null),
+  openPages: signal<string[]>([]),
+  backStack: signal<string[]>([]),
+  forwardStack: signal<string[]>([])
 }))
 
 function persistTabs(): void {
@@ -67,15 +67,15 @@ export const pageStore = {
   /** Set the active page from a URL deep-link / browser back-forward without touching history stacks. */
   restore(pageId: string): void {
     if (pageId === activePageId.value) return
-    if (existingIndex(pageId) === -1) openPages.value.push(pageId)
+    if (existingIndex(pageId) === -1) openPages.value = [...openPages.value, pageId]
     activePageId.value = pageId
   },
 
   openPage(pageId: string): void {
     if (pageId === activePageId.value) return
     const index = existingIndex(pageId)
-    if (index === -1) openPages.value.push(pageId)
-    if (activePageId.value !== null) backStack.value.push(activePageId.value)
+    if (index === -1) openPages.value = [...openPages.value, pageId]
+    if (activePageId.value !== null) backStack.value = [...backStack.value, activePageId.value]
     forwardStack.value = []
     activePageId.value = pageId
   },
@@ -83,13 +83,13 @@ export const pageStore = {
   closeTab(pageId: string): void {
     const index = existingIndex(pageId)
     if (index === -1) return
-    openPages.value.splice(index, 1)
+    openPages.value = openPages.value.filter(id => id !== pageId)
     backStack.value = backStack.value.filter((id) => id !== pageId)
     forwardStack.value = forwardStack.value.filter((id) => id !== pageId)
     if (activePageId.value === pageId) {
       const next = openPages.value[index] ?? openPages.value[index - 1] ?? null
       activePageId.value = next
-      if (next) backStack.value.push(next)
+      if (next) backStack.value = [...backStack.value, next]
     }
   },
 
@@ -108,20 +108,28 @@ export const pageStore = {
   },
 
   back(): void {
-    const previous = backStack.value.pop()
+    const previous = backStack.value[backStack.value.length - 1]
     if (previous === undefined) return
-    if (activePageId.value !== null) forwardStack.value.push(activePageId.value)
+    backStack.value = backStack.value.slice(0, -1)
+    if (activePageId.value !== null) forwardStack.value = [...forwardStack.value, activePageId.value]
     activePageId.value = previous
-    if (existingIndex(previous) === -1) openPages.value.push(previous)
+    if (existingIndex(previous) === -1) openPages.value = [...openPages.value, previous]
   },
 
   forward(): void {
-    const next = forwardStack.value.pop()
+    const next = forwardStack.value[forwardStack.value.length - 1]
     if (next === undefined) return
-    if (activePageId.value !== null) backStack.value.push(activePageId.value)
+    forwardStack.value = forwardStack.value.slice(0, -1)
+    if (activePageId.value !== null) backStack.value = [...backStack.value, activePageId.value]
     activePageId.value = next
-    if (existingIndex(next) === -1) openPages.value.push(next)
+    if (existingIndex(next) === -1) openPages.value = [...openPages.value, next]
   }
 }
 
-watch([activePageId, openPages], persistTabs, { deep: true })
+// Persist tabs on any change
+effect(() => {
+  // Touch all signals to track them
+  void activePageId.value
+  void openPages.value
+  persistTabs()
+})

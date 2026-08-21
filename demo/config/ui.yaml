@@ -1,0 +1,553 @@
+# CutCruft — external UI configuration for a workspace.
+# Structure: pages, navigation, buttons with command bindings, overlays,
+# shortcuts, subscriptions and the theme. Loaded by the core from
+# <workspace>/ui.yaml; plugins provide only commands/entities.
+
+app:
+  title: "{{demo.app.title}}"
+  logo: logo.png
+  layout: sidebar
+  shell:
+    topbar:
+      brand: true
+      actions:
+        - id: nav-tasks
+          icon: "☑"
+          label: "{{demo.page.tasks}}"
+          action: navigate
+          page: tasks
+        - id: nav-boards
+          icon: "▦"
+          label: "{{demo.page.boards}}"
+          action: navigate
+          page: boards
+
+theme:
+  mode: auto
+  palette:
+    light:
+      bg: "#f5f6f8"
+      surface: "#ffffff"
+      text: "#1c1c1c"
+      muted: "#666666"
+      border: "#e2e2e2"
+      primary: "#0066cc"
+      primaryHover: "#0052a3"
+      danger: "#b00020"
+      success: "#1b7f3b"
+      warning: "#b26a00"
+      info: "#0066cc"
+    dark:
+      bg: "#16181d"
+      surface: "#1f2329"
+      text: "#e8e8e8"
+      muted: "#9aa0a6"
+      border: "#343a42"
+      primary: "#4d9fff"
+      primaryHover: "#6fb1ff"
+      danger: "#ff6b6b"
+      success: "#4cd07d"
+      warning: "#ffc24d"
+      info: "#4d9fff"
+  typography:
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+    headingFont: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+    monospaceFont: "'SF Mono', Menlo, monospace"
+    baseSize: "14px"
+    scale:
+      sm: "12px"
+      md: "14px"
+      lg: "16px"
+      xl: "20px"
+  radii:
+    sm: "6px"
+    md: "8px"
+    lg: "12px"
+    xl: "16px"
+  spacing:
+    xs: "4px"
+    sm: "8px"
+    md: "12px"
+    lg: "20px"
+    xl: "32px"
+  motion:
+    duration:
+      fast: "120ms"
+      normal: "240ms"
+      slow: "400ms"
+    easing:
+      default: "cubic-bezier(0.2, 0.8, 0.2, 1)"
+      in: "cubic-bezier(0.4, 0, 1, 1)"
+      out: "cubic-bezier(0, 0, 0.2, 1)"
+
+shortcuts:
+  - id: new-task
+    keys: ["mod+n"]
+    action: command
+    command: demo.create
+    params: { title: "Quick task" }
+  - id: goto-tasks
+    keys: ["mod+1"]
+    action: navigate
+    page: tasks
+  - id: goto-boards
+    keys: ["mod+2"]
+    action: navigate
+    page: boards
+  - id: export-quick
+    keys: ["mod+e"]
+    action: command
+    command: demo-storage.export
+
+eventSubscriptions:
+  - id: toast-task-changed
+    event: object.changed
+    filter: { entityType: demo.task }
+    action: toast
+    params: { message: "Task data changed" }
+
+overlays:
+  - id: task-row-menu
+    kind: menu
+    items:
+      - label: "{{demo.tasks.menu.complete}}"
+        icon: "✓"
+        command: demo.complete
+        params: { id: "$row.id" }
+        confirm: "{{demo.tasks.complete.confirm}}"
+      - label: "{{demo.tasks.menu.open}}"
+        icon: "▸"
+        command: demo.reopentask
+        params: { id: "$row.id" }
+        confirm: "{{demo.tasks.reopen.confirm}}"
+      - label: "{{demo.tasks.menu.delete}}"
+        icon: "✕"
+        command: demo.delete
+        params: { id: "$row.id" }
+        confirm: "{{demo.tasks.delete.confirm}}"
+        danger: true
+      - separator: true
+      - label: "{{demo.tasks.menu.duplicate}}"
+        icon: "⧉"
+        command: demo.duplicate
+        params: { id: "$row.id" }
+        disabledWhen: { status: done }
+      - label: "{{demo.tasks.menu.move}}"
+        icon: "↔"
+        action: event
+        event: task.move
+        params: { id: "$row.id" }
+  - id: task-details-modal
+    kind: modal
+    title: "{{demo.tasks.details.title}}"
+    width: "min(90vw, 28rem)"
+    content:
+      type: Text
+      config:
+        text: "{{demo.tasks.details.text}}"
+  - id: diagram-node-menu
+    kind: menu
+    items:
+      - label: "{{demo.diagram.menu.duplicate}}"
+        icon: "⧉"
+        spec:
+          action: editor
+          editor: diagram
+          command: duplicate
+          params: { id: "$row.id" }
+      - divider: true
+      - label: "{{demo.diagram.menu.delete}}"
+        icon: "✕"
+        spec:
+          action: editor
+          editor: diagram
+          command: delete
+          params: { id: "$row.id" }
+        confirm: "{{demo.diagram.menu.delete.confirm}}"
+        danger: true
+  - id: canvas-element-menu
+    kind: menu
+    items:
+      - label: "{{demo.canvas.menu.copy}}"
+        icon: "⧉"
+        spec:
+          action: editor
+          editor: canvas
+          command: duplicate
+          params: { id: "$row.id" }
+      - label: "{{demo.canvas.menu.delete}}"
+        icon: "✕"
+        spec:
+          action: editor
+          editor: canvas
+          command: delete
+          params: { id: "$row.id" }
+        danger: true
+  - id: scene-object-menu
+    kind: menu
+    items:
+      - label: "{{demo.scene.menu.duplicate}}"
+        icon: "⧉"
+        spec:
+          action: editor
+          editor: scene3d
+          command: duplicate
+          params: { id: "$row.id" }
+      - label: "{{demo.scene.menu.delete}}"
+        icon: "✕"
+        spec:
+          action: editor
+          editor: scene3d
+          command: delete
+          params: { id: "$row.id" }
+        danger: true
+
+overlayTriggers:
+  - event: contextmenu
+    componentType: Table
+    objectType: demo.task
+    overlay: task-row-menu
+  - event: contextmenu
+    objectType: diagram.node
+    overlay: diagram-node-menu
+  - event: contextmenu
+    objectType: canvas.element
+    overlay: canvas-element-menu
+  - event: contextmenu
+    objectType: scene3d.object
+    overlay: scene-object-menu
+
+navigation:
+  - id: nav-overview
+    label: "{{demo.nav.group.overview}}"
+    group: true
+  - id: nav-boards
+    label: "{{demo.page.boards}}"
+    pageId: boards
+    order: 1
+    group: "{{demo.nav.group.overview}}"
+    icon: "▦"
+  - id: nav-tasks
+    label: "{{demo.page.tasks}}"
+    pageId: tasks
+    order: 2
+    group: "{{demo.nav.group.overview}}"
+    icon: "☑"
+  - id: nav-editors
+    label: "{{demo.nav.group.editors}}"
+    group: true
+  - id: nav-docs
+    label: "{{demo.page.docs}}"
+    pageId: docs
+    order: 3
+    group: "{{demo.nav.group.editors}}"
+    icon: "✎"
+  - id: nav-diagram
+    label: "{{demo.page.diagram}}"
+    pageId: diagram
+    order: 4
+    group: "{{demo.nav.group.editors}}"
+    icon: "◫"
+  - id: nav-scene
+    label: "{{demo.page.scene}}"
+    pageId: scene
+    order: 5
+    group: "{{demo.nav.group.editors}}"
+    icon: "◈"
+  - id: nav-board
+    label: "{{demo.page.board}}"
+    pageId: board
+    order: 6
+    group: "{{demo.nav.group.editors}}"
+    icon: "✏"
+  - id: nav-export
+    label: "Export"
+    pageId: export
+    order: 7
+    group: Overview
+    icon: "⇪"
+  - id: nav-layout
+    label: "Layout"
+    pageId: layout-demo
+    order: 8
+    group: "{{demo.nav.group.demo}}"
+    icon: "▦"
+
+pages:
+  - id: tasks
+    title: "{{demo.page.tasks}}"
+    sections:
+      - id: tasks-stats
+        layout: grid
+        columns: 3
+        components:
+          - type: Stat
+            config:
+              label: "{{demo.tasks.stat.total}}"
+              data:
+                command: demo.list
+                entityType: demo.task
+              tone: blue
+          - type: Stat
+            config:
+              label: "{{demo.tasks.stat.open}}"
+              data:
+                command: demo.stats
+                entityType: demo.task
+              valueKey: open
+              tone: amber
+          - type: Stat
+            config:
+              label: "{{demo.tasks.stat.done}}"
+              data:
+                command: demo.stats
+                entityType: demo.task
+              valueKey: done
+              tone: green
+      - id: tasks-list
+        layout: grid
+        columns: 1
+        components:
+          - type: Table
+            config:
+              data:
+                command: demo.list
+                entityType: demo.task
+              deleteCommand: demo.delete
+              searchable: true
+              sortable: true
+              pagination:
+                pageSize: 5
+                pageSizeOptions: [5, 10, 25]
+              showRowCount: true
+              rowActions:
+                - label: "{{demo.tasks.complete}}"
+                  command: demo.complete
+                  params: { id: "$row.id" }
+                  confirm: "{{demo.tasks.complete.confirm}}"
+                - label: "{{demo.tasks.reopen}}"
+                  command: demo.reopentask
+                  entityType: demo.task
+                  fields: { id: "$row.id" }
+                  disabledWhen: { status: open }
+              columns:
+                - key: title
+                  label: "{{demo.tasks.col.title}}"
+                  sortable: true
+                - key: status
+                  label: "{{demo.tasks.col.status}}"
+                  render: badge
+                  badge:
+                    tones:
+                      open: amber
+                      done: green
+                - key: boardId
+                  label: "{{demo.tasks.col.board}}"
+          - type: Form
+            config:
+              command: demo.create
+              submitLabel: "{{demo.tasks.create.submit}}"
+              fields:
+                - name: title
+                  label: "{{demo.tasks.field.title}}"
+                  type: text
+                  required: true
+                  minLength: 3
+                - name: boardId
+                  label: "{{demo.tasks.field.board}}"
+                  type: select
+                  options:
+                    command: demo.listboards
+                    valueKey: id
+                    labelKey: name
+                - name: description
+                  label: "{{demo.tasks.field.description}}"
+                  type: textarea
+                  rows: 3
+
+  - id: docs
+    title: "{{demo.page.docs}}"
+    sections:
+      - id: docs-editor
+        layout: grid
+        columns: 1
+        components:
+          - type: richtext
+            config:
+              content:
+                command: demo.loaddocument
+                params: { id: "11111111-1111-4111-8111-111111111111" }
+              save:
+                command: demo.savedocument
+                params: { id: "11111111-1111-4111-8111-111111111111", title: "Notes" }
+              toolbar: [bold, italic, underline, bulletList, orderedList, taskList, link]
+              mentions: true
+
+  - id: diagram
+    title: "{{demo.page.diagram}}"
+    sections:
+      - id: diagram-editor
+        layout: grid
+        columns: 1
+        components:
+          - type: diagram
+            config:
+              id: diagram-editor
+              content:
+                command: demo.loaddocument
+                params: { id: "22222222-2222-4222-8222-222222222222" }
+              save:
+                command: demo.savedocument
+                params: { id: "22222222-2222-4222-8222-222222222222", title: "Diagram" }
+              layout: { type: dagre, gapX: 40, gapY: 60 }
+              toolbar: [undo, redo, addRect, addEllipse, addEdge, layout, fit, delete]
+
+  - id: scene
+    title: "{{demo.page.scene}}"
+    sections:
+      - id: scene-editor
+        layout: grid
+        columns: 1
+        components:
+          - type: scene3d
+            config:
+              id: scene-editor
+              content:
+                command: demo.loaddocument
+                params: { id: "33333333-3333-4333-8333-333333333333" }
+              save:
+                command: demo.savedocument
+                params: { id: "33333333-3333-4333-8333-333333333333", title: "Scene" }
+              toolbar: [addBox, addSphere, addCylinder, delete, resetCamera]
+
+  - id: board
+    title: "{{demo.page.board}}"
+    sections:
+      - id: board-editor
+        layout: grid
+        columns: 1
+        components:
+          - type: canvas
+            config:
+              id: board-editor
+              content:
+                command: demo.loaddocument
+                params: { id: "44444444-4444-4444-8444-444444444444" }
+              save:
+                command: demo.savedocument
+                params: { id: "44444444-4444-4444-8444-444444444444", title: "Whiteboard" }
+              toolbar: [undo, redo, select, pan, draw, erase, rect, ellipse, line, arrow, front, back, clear]
+
+  - id: layout-demo
+    title: "Layout Demo"
+    sections:
+      - id: layout-stack
+        layout: grid
+        columns: 1
+        components:
+          - type: Stack
+            config:
+              direction: vertical
+              gap: 16
+              children:
+                - type: Card
+                  config:
+                    title: "Stack / Grid demo"
+                    subtitle: "V10 configurable layout primitives"
+                    children:
+                      - type: Grid
+                        config:
+                          columns: 2
+                          gap: 12
+                          children:
+                            - type: Stat
+                              config: { label: "Total", value: "42", tone: blue }
+                            - type: Stat
+                              config: { label: "Active", value: "17", tone: green }
+                      - type: Stack
+                        config:
+                          direction: horizontal
+                          gap: 8
+                          children:
+                            - type: Button
+                              config: { label: "Primary", variant: primary, command: demo.create, params: { title: "From layout" } }
+
+  - id: export
+    title: "Export"
+    sections:
+      - id: export-actions
+        layout: stack
+        columns: 1
+        components:
+          - type: Button
+            config:
+              label: "Export JSON"
+              command: demo-storage.export
+
+  - id: boards
+    title: "{{demo.page.boards}}"
+    sections:
+      - id: boards-stats
+        layout: grid
+        columns: 3
+        components:
+          - type: Stat
+            config:
+              label: "{{demo.boards.stat.boards}}"
+              data:
+                command: demo.stats
+                entityType: demo.board
+              valueKey: total
+              tone: blue
+          - type: Stat
+            config:
+              label: "{{demo.boards.stat.open}}"
+              data:
+                command: demo.stats
+                entityType: demo.task
+              valueKey: open
+              tone: amber
+          - type: Stat
+            config:
+              label: "{{demo.boards.stat.done}}"
+              data:
+                command: demo.stats
+                entityType: demo.task
+              valueKey: done
+              tone: green
+      - id: boards-main
+        layout: grid
+        columns: 2
+        components:
+          - type: Table
+            config:
+              data:
+                command: demo.list
+                entityType: demo.board
+              deleteCommand: demo.delete
+              searchable: true
+              sortable: true
+              columns:
+                - key: name
+                  label: "{{demo.boards.col.name}}"
+                  sortable: true
+                - key: description
+                  label: "{{demo.boards.col.description}}"
+          - type: Stack
+            config:
+              direction: vertical
+              gap: 12
+              children:
+                - type: Form
+                  config:
+                    command: demo.create
+                    entityType: demo.task
+                    submitLabel: "{{demo.boards.newTask}}"
+                    fields:
+                      - name: title
+                        label: "{{demo.boards.create.name}}"
+                        type: text
+                        required: true
+                      - name: description
+                        label: "{{demo.boards.create.desc}}"
+                        type: textarea

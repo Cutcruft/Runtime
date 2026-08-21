@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "paths": {
+      "@cutcrft/runtime-client": ["../../../sdk/frontend/src/index.ts"],
+      "@cutcrft/plugin-sdk": ["../../../sdk/frontend/src/index.ts"]
+    }
+  },
+  "include": ["src"]
+}

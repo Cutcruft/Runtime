@@ -1,4 +1,0 @@
-id: editor-scene3d
-version: 1.0.0
-apiVersion: 1
-main: com.example.editors.EditorScene3DPlugin

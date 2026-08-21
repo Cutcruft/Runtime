@@ -1,0 +1,40 @@
+{
+  "name": "@cutcrft/plugin-sdk",
+  "version": "0.1.0",
+  "description": "CutCruft Plugin/Module SDK — TypeScript API for building frontend modules and plugins",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --external preact --external @preact/signals && vite build",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --external preact --external @preact/signals --watch"
+  },
+  "dependencies": {
+    "@preact/signals": "*",
+    "@vanilla-extract/css": "^1.21.2",
+    "preact": "*"
+  },
+  "peerDependencies": {
+    "@preact/signals": "*",
+    "preact": "*"
+  },
+  "devDependencies": {
+    "@vanilla-extract/vite-plugin": "^5.2.6",
+    "tsup": "^8.0.0",
+    "typescript": "^5.7.0",
+    "vite": "^5.4.21"
+  },
+  "license": "MIT"
+}

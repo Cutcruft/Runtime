@@ -1,20 +1,14 @@
 package runtime
 
-import java.util.concurrent.Executors
 import java.util.logging.Logger
 import kotlin.system.exitProcess
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.asCoroutineDispatcher
-import runtime.application.command.ProjectLocks
 import runtime.application.workspace.WorkspaceBuilder
 import runtime.application.workspace.WorkspaceRegistry
 import runtime.domain.models.Messages
 import runtime.infrastructure.configuration.ConfigLoader
 import runtime.infrastructure.dev.PluginWatcher
 import runtime.infrastructure.dev.RuntimeReloader
-import runtime.infrastructure.inmem.InMemoryEntityRegistry
 import runtime.infrastructure.plugin.PluginAssetsService
-import runtime.infrastructure.storage.StorageFactory
 import runtime.infrastructure.web.WebServer
 
 private val logger = Logger.getLogger("Runtime")
@@ -25,19 +19,8 @@ fun main(args: Array<String>) {
         val config = ConfigLoader().load(configPath)
         val messages = Messages(config.messages)
 
-        // Shared infrastructure across workspaces.
-        val entityRegistry = InMemoryEntityRegistry()
-        val storageResult = StorageFactory().create(config.storage, entityRegistry)
-        val entityStore = storageResult.store
-        val projectLocks = ProjectLocks()
-        val dispatcher = config.command.executorThreads?.let { threads ->
-            Executors.newFixedThreadPool(threads).asCoroutineDispatcher()
-        } ?: Dispatchers.Default
-
+        // V11.3 — infrastructure is per-workspace, created in WorkspaceBuilder.build().
         val builder = WorkspaceBuilder(
-            sharedStore = entityStore,
-            projectLocks = projectLocks,
-            executorDispatcher = dispatcher,
             configPath = configPath
         )
 
@@ -45,10 +28,13 @@ fun main(args: Array<String>) {
         // additional workspaces discovered under workspaces/<id>/application.yaml.
         val registry = WorkspaceRegistry()
         registry.register(builder.build("default", config))
-        loadAdditionalWorkspaces(registry, builder)
+        loadAdditionalWorkspaces(registry, builder, configPath)
 
         val defaultWs = registry.default()
         val pluginAssetsService = PluginAssetsService(defaultWs.runtime.pluginDescriptors)
+
+        // V11.3 — entityRegistry for dev-reloader comes from default workspace.
+        // StorageFactory no longer needed here; each workspace creates its own EntityStore.
 
         val webServer = WebServer(
             config = config,
@@ -66,7 +52,7 @@ fun main(args: Array<String>) {
             val watchPaths = config.dev.watchPaths.ifEmpty { config.plugins.directories }
             val reloader = RuntimeReloader(
                 configPath = configPath,
-                entityRegistry = entityRegistry,
+                entityRegistry = defaultWs.runtime.entityRegistry,
                 commandRegistry = defaultWs.runtime.commandRegistry,
                 infrastructureRegistry = defaultWs.runtime.infrastructureRegistry,
                 httpEndpoints = webServer.httpEndpoints,
@@ -87,12 +73,12 @@ fun main(args: Array<String>) {
 
             java.lang.Runtime.getRuntime().addShutdownHook(Thread {
                 watcher.stop()
-                entityStore.closeAll()
+                registry.all().forEach { it.entityStore.closeAll() }
                 logger.info("Shutting down Runtime...")
             })
         } else {
             java.lang.Runtime.getRuntime().addShutdownHook(Thread {
-                entityStore.closeAll()
+                registry.all().forEach { it.entityStore.closeAll() }
                 logger.info("Shutting down Runtime...")
             })
         }
@@ -105,12 +91,15 @@ fun main(args: Array<String>) {
     }
 }
 
-/** V5: discovers additional workspaces from `workspaces/<id>/application.yaml`. */
+/** Discovers additional workspaces from `<configDir>/../workspaces/<id>/application.yaml` (optional). */
 private fun loadAdditionalWorkspaces(
     registry: WorkspaceRegistry,
-    builder: WorkspaceBuilder
+    builder: WorkspaceBuilder,
+    configPath: String?
 ) {
-    val workspacesDir = java.io.File("workspaces")
+    val configFile = java.io.File(configPath ?: "config/application.yaml").absoluteFile
+    val configDir = configFile.parentFile ?: java.io.File(".")
+    val workspacesDir = java.io.File(configDir.parentFile ?: configDir, "workspaces")
     if (!workspacesDir.isDirectory) return
     for (dir in workspacesDir.listFiles { f -> f.isDirectory }?.sortedBy { it.name } ?: emptyList()) {
         val id = dir.name

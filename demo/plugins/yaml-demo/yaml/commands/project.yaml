@@ -1,0 +1,4 @@
+crud:
+  entity: yamldemo.project
+  prefix: project
+  group: YAML Demo

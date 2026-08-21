@@ -25,7 +25,8 @@ import runtime.domain.repositories.CommandRegistry
 import runtime.infrastructure.infrastructure.EmptyInfrastructureRegistry
 import runtime.infrastructure.infrastructure.InfrastructureService
 import runtime.infrastructure.infrastructure.NoopInfrastructureClient
-import runtime.infrastructure.query.CalciteQueryEngine
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.KotlinModule
 import runtime.infrastructure.script.NoopScriptEngine
 import runtime.infrastructure.script.ScriptEngine
 
@@ -54,7 +55,7 @@ class CommandExecutor(
     private val maxConcurrency: Int = Runtime.getRuntime().availableProcessors(),
     private val queueWaitMs: Long = 5_000,
     private val timeoutMs: Long? = null,
-    private val queryEngine: CalciteQueryEngine = CalciteQueryEngine(),
+    private val mapper: ObjectMapper = ObjectMapper().registerModule(KotlinModule.Builder().build()),
     private val infrastructure: InfrastructureService = InfrastructureService(
         registry = EmptyInfrastructureRegistry,
         client = NoopInfrastructureClient
@@ -129,7 +130,8 @@ class CommandExecutor(
                     ?: return@withRead CommandResult.error(
                         messages.format(Messages.COMMAND_EXECUTION_FAILED, "message" to "Analytical command missing SQL")
                     )
-                queryEngine.execute(project, analytical.sql, params)
+                val enriched = enrichWithProjectData(project, params)
+                analytical.execute(CommandContextImpl(project, projectLocks, messages, infrastructure, scriptEngine), enriched)
             }
         }
         if (command.type == CommandType.PIPELINE) {
@@ -203,7 +205,8 @@ class CommandExecutor(
                             messages.format(Messages.COMMAND_EXECUTION_FAILED, "message" to "Analytical command missing SQL")
                         )
                     } else {
-                        queryEngine.execute(project, analytical.sql, stepParams)
+                        val context: CommandContext = CommandContextImpl(project, projectLocks, messages, infrastructure, scriptEngine)
+                        analytical.execute(context, enrichWithProjectData(project, stepParams))
                     }
                 }
                 else -> {
@@ -291,6 +294,28 @@ class CommandExecutor(
 
     private companion object {
         const val MAX_PIPELINE_DEPTH = 8
+    }
+
+    /**
+     * V9.6: builds `projectData` (entityType → JSON maps of all objects) from the
+     * project and merges it into the params map. Analytical commands receive this
+     * data and execute SQL themselves via the SDK (no Calcite dependency in core).
+     */
+    private fun enrichWithProjectData(project: Project, params: Any?): Map<String, Any?> {
+        val base = LinkedHashMap<String, Any?>()
+        (params as? Map<*, *>)?.forEach { (k, v) -> base[k.toString()] = v }
+        val projectData = LinkedHashMap<String, List<Map<String, Any?>>>()
+        for (type in project.registeredEntityTypes()) {
+            @Suppress("UNCHECKED_CAST")
+            val objects = project.objectList<Any>(type)?.values().orEmpty()
+            val maps = objects.map { row ->
+                @Suppress("UNCHECKED_CAST")
+                mapper.convertValue(row, Map::class.java) as Map<String, Any?>
+            }
+            projectData[type.value] = maps
+        }
+        base["projectData"] = projectData
+        return base
     }
 
     private suspend fun publishChanges(project: Project, result: CommandResult, sessionId: String? = null) {

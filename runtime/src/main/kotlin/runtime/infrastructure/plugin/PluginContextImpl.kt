@@ -12,13 +12,13 @@ import runtime.domain.repositories.CommandRegistry
 import runtime.domain.repositories.EntityRegistry
 import runtime.domain.repositories.InfrastructureRegistry
 
-class PluginContextImpl(
-    private val pluginId: PluginId,
+open class PluginContextImpl(
+    protected val pluginId: PluginId,
     private val entityRegistry: EntityRegistry,
     private val commandRegistry: CommandRegistry,
     private val infrastructureRegistry: InfrastructureRegistry,
     private val onUiRegistered: (UIDefinition) -> Unit,
-    private val onFrontendComponentRegistered: (FrontendComponentDefinition) -> Unit = {}
+    protected val onFrontendComponentRegistered: (FrontendComponentDefinition) -> Unit = {}
 ) : PluginContext {
 
     override fun registerEntity(definition: EntityDefinition) {

@@ -33,12 +33,14 @@ import runtime.domain.repositories.EntityRegistry
 import runtime.domain.repositories.InfrastructureRegistry
 import runtime.domain.repositories.SessionRepository
 import runtime.infrastructure.configuration.ConfigLoader
+import runtime.infrastructure.configuration.UiYamlLoader
 import runtime.infrastructure.inmem.InMemoryAuditLog
 import runtime.infrastructure.inmem.InMemoryCommandRegistry
 import runtime.infrastructure.inmem.InMemoryEntityRegistry
 import runtime.infrastructure.inmem.InMemoryInfrastructureRegistry
 import runtime.infrastructure.inmem.InMemoryProjectRepository
 import runtime.infrastructure.inmem.InMemorySessionRepository
+import runtime.infrastructure.storage.StorageFactory
 import runtime.infrastructure.infrastructure.InfrastructureClientImpl
 import runtime.infrastructure.infrastructure.InfrastructureService
 import runtime.infrastructure.plugin.PluginAssetsService
@@ -49,15 +51,10 @@ import runtime.infrastructure.ws.WsEventPublisher
 /**
  * V5 — builds a fully isolated [WorkspaceServices] slice for one workspace id.
  *
- * Each workspace gets its own entity/command/infrastructure registries, session
- * repository, project repository, command executor and UI configuration. The heavy
- * infrastructure ([EntityStore], [ProjectLocks], executor dispatcher) is shared
- * across workspaces (projects are globally-addressed UUIDs).
+ * V11.3 — each workspace gets its own EntityStore, ProjectLocks, and executor
+ * dispatcher, providing complete data isolation between workspaces.
  */
 class WorkspaceBuilder(
-    private val sharedStore: EntityStore,
-    private val projectLocks: ProjectLocks,
-    private val executorDispatcher: CoroutineDispatcher,
     private val configPath: String? = null,
     private val pluginAssetsService: runtime.infrastructure.plugin.PluginAssetsService? = null
 ) {
@@ -65,15 +62,22 @@ class WorkspaceBuilder(
     fun build(workspaceId: String, config: RuntimeConfig): WorkspaceServices {
         val messages = Messages(config.messages)
 
+        // V11.3 — each workspace gets fully isolated infrastructure
+        val locks = ProjectLocks()
+        val dispatcher = config.command.executorThreads?.let { threads ->
+            kotlinx.coroutines.Dispatchers.IO.limitedParallelism(threads)
+        } ?: kotlinx.coroutines.Dispatchers.IO
+
         val entityRegistry: EntityRegistry = InMemoryEntityRegistry()
+        val store = StorageFactory().create(config.storage, entityRegistry).store
         val commandRegistry: CommandRegistry = InMemoryCommandRegistry()
         val infrastructureRegistry: InfrastructureRegistry = InMemoryInfrastructureRegistry()
         val projectRepository = InMemoryProjectRepository()
         val sessionRepository: SessionRepository = InMemorySessionRepository()
 
-        val projectFactory = ProjectFactory(entityRegistry, sharedStore)
-        val projectSerializer = ProjectSerializer(entityRegistry, sharedStore)
-        val projectService = ProjectService(projectRepository, projectFactory, projectSerializer, sharedStore, null)
+        val projectFactory = ProjectFactory(entityRegistry, store)
+        val projectSerializer = ProjectSerializer(entityRegistry, store)
+        val projectService = ProjectService(projectRepository, projectFactory, projectSerializer, store, null)
 
         val auditService = AuditService(
             enabled = config.audit.enabled,
@@ -91,7 +95,7 @@ class WorkspaceBuilder(
 
         val maxConcurrency = (config.command.maxConcurrency ?: Runtime.getRuntime().availableProcessors()).coerceAtMost(Runtime.getRuntime().availableProcessors())
         val commandExecutor = CommandExecutor(
-            commandRegistry, auditService, projectLocks, messages, eventPublisher, executorDispatcher,
+            commandRegistry, auditService, locks, messages, eventPublisher, dispatcher,
             maxConcurrency = maxConcurrency,
             queueWaitMs = config.command.queueWaitMs ?: 5_000,
             timeoutMs = config.command.timeoutMs,
@@ -104,19 +108,31 @@ class WorkspaceBuilder(
         val layerService = LayerService()
         registerLayerCommands(commandRegistry, layerService)
 
+        // V11: load the external UI configuration (<configDir>/ui.yaml). It is the
+        // single source of truth for the interface structure and theme; plugin UI
+        // (registerUi) is no longer used.
+        val uiYaml = resolveUiYamlPath(configPath)
+        val uiResult = UiYamlLoader().load(uiYaml)
+        val effectiveConfig = uiResult.theme?.let { theme ->
+            config.copy(ui = config.ui.copy(theme = theme))
+        } ?: config
+
         val workspaceConfiguration: WorkspaceConfiguration =
             WorkspaceConfigurationBuilder(
-                config.ui, config.ws.path, bootstrapResult.messageRegistry, config.routing,
+                effectiveConfig.ui, config.ws.path, bootstrapResult.messageRegistry, config.routing,
                 devEnabled = config.dev.enabled,
                 devPollIntervalMs = if (config.dev.enabled) config.dev.watchIntervalMs else 0,
                 collaborationEnabled = config.collaboration.enabled,
                 collaborationCursorsEnabled = config.collaboration.cursorsEnabled
             )
-                .build(bootstrapResult.uiDefinitions, commandRegistry, entityRegistry, bootstrapResult.loadedPluginIds, bootstrapResult.frontendComponents)
+                .build(
+                    uiResult.uiDefinitions.ifEmpty { bootstrapResult.uiDefinitions },
+                    commandRegistry, entityRegistry, bootstrapResult.loadedPluginIds, bootstrapResult.frontendComponents
+                )
 
         val runtime = WorkspaceRuntime(
             workspaceId = workspaceId,
-            config = config,
+            config = effectiveConfig,
             workspaceConfiguration = workspaceConfiguration,
             entityRegistry = entityRegistry,
             commandRegistry = commandRegistry,
@@ -132,7 +148,9 @@ class WorkspaceBuilder(
             projectService = projectService,
             eventPublisher = eventPublisher,
             presenceManager = presenceManager,
-            activeSessions = activeSessions
+            activeSessions = activeSessions,
+            wsHandlers = bootstrapResult.wsHandlers,
+            entityStore = store
         )
     }
 
@@ -157,5 +175,12 @@ class WorkspaceBuilder(
         commandRegistry.register(pluginId, LayerShowCommand(layerService))
         commandRegistry.register(pluginId, LayerHideCommand(layerService))
         commandRegistry.register(pluginId, LayerToggleCommand(layerService))
+    }
+
+    /** V11 — resolves `<configDir>/ui.yaml` next to the workspace application.yaml. */
+    private fun resolveUiYamlPath(configPath: String?): String {
+        val configFile = java.io.File(configPath ?: "config/application.yaml").absoluteFile
+        val configDir = configFile.parentFile ?: java.io.File(".")
+        return java.io.File(configDir, "ui.yaml").absolutePath
     }
 }

@@ -1,0 +1,27 @@
+{
+  "name": "@cutcrft/editor-diagram",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@cutcrft/plugin-sdk": "file:../../../sdk/frontend",
+    "@preact/signals": "^2.11.1",
+    "preact": "^10.29.8",
+    "@antv/x6": "^2.19.2",
+    "@antv/x6-plugin-clipboard": "^2.1.6",
+    "@antv/x6-plugin-dnd": "^2.1.1",
+    "@antv/x6-plugin-history": "^2.2.4",
+    "@antv/x6-plugin-keyboard": "^2.2.3",
+    "@antv/x6-plugin-selection": "^2.2.2",
+    "@antv/x6-plugin-snapline": "^2.1.7",
+    "@dagrejs/dagre": "^1.1.8"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "typescript": "^5.7.0",
+    "vite": "^5.4.21"
+  }
+}

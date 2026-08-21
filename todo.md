@@ -10,7 +10,93 @@
 
 ## Текущий статус (20.08.2026)
 
-### 🏗️ В РАБОТЕ: V7 — стилистика, авто-обновление, plugin-driven root, чистка
+### ✅ V8.5 — Реструктуризация репозитория
+
+Новая структура:
+- `runtime/` — ядро (Ktor backend + `frontend/` Preact).
+- `sdk/` — публичные контракты (backend `sdk/` + frontend `sdk/frontend/`).
+- `modules/` — базовый набор модулей: `ui-base`, `editor-canvas/diagram/richtext/scene3d`.
+- `demo/` — демо-приложение: `demo/config/`, `demo/demo-plugin`, `demo/demo-storage-plugin`, `demo/plugins/yaml-demo`, `demo/workspaces/`.
+- `tmp/` — всё билд-временное (собранные плагины `tmp/plugins/`, данные `tmp/data/`), в `.gitignore`.
+- Удалено: `com/`, `.kilo/`, `.idea/`, `docs/`, корневые `frontend/`, `sdk-frontend/`, `demo-plugin/`, `demo-storage-plugin/`, `plugins/` (сборки).
+- Обновлены: Makefile, README, `.github/workflows` (пути), `demo/config/application.yaml` и `demo/workspaces/alt` (пути `tmp/plugins`, `tmp/data`), `Main.kt` (workspaces относительно конфига), `HttpEndpoints.resolveUidocsDir` (`runtime/frontend/storybook-static`).
+- Проверено: 225 тестов PASS, make build PASS, сервер поднимает default+alt воркспейсы, ui-base + yaml-demo загружаются.
+
+### ✅ V9 — завершено (ядро/SDK не знают о плагинах/модулях)
+
+**Сделано:**
+- **V9.1 (ядро = data)**: runtime/frontend очищен — ui-base, редакторы, runtimeClient, React overlay-хосты удалены. Ядро: main.tsx (mount) + store + renderer + protocol + events + overlay(data) + pluginLoader + core/services + styles. Рендерит App через resolveComponent.
+- **V9.4 (SDK)**: sdk/frontend = автономный публичный TS API, собран через vite → `pluginSdk.js` (single-file ESM). importmap: `@cutcrft/plugin-sdk` → /pluginSdk.js, runtime-client → alias. Экспортирует Container/ComponentHost, OverlayInstance, applyTheme, LayerDefinition.
+- **V9.2 (редакторы)**: все 4 редактора в `modules/editor-*/frontend/` (свои package.json с tiptap/antv/three), Module + registerPrimitive. tiptap/antv/three удалены из ядра.
+- **V9.3 (ui-base)**: App/AppShell/OverlayHost/примитивы/ThemeProvider → `modules/ui-base/frontend/`, собран app.js, Module регистрирует "App". main.tsx рендерит через резолв.
+- **V9.5 (связь UI↔команды)**: в YAML примитив объявляет `data.command`/`entityType`/`actions`, рендерер резолвит по типу и привязывает команды/данные. Ядро не знает команд/примитивов.
+- **V9.6 (gRPC/calcite → SDK)**: AnalyticalCommand сам выполняет SQL через CalciteQueryEngine из SDK (ядро передаёт `projectData` в params). InfrastructureService+gRPC+InfrastructureRegistry → SDK. calcite/grpc/protobuf удалены из runtime/pom → в sdk/pom. guava-конфликт фиксен (33.3.0-jre).
+- **V9.7 (хранилища)**: все бэкенды (memory/files/hybrid/redis/db) в pom ядра, StorageFactory выбирает по конфигу. Базовое ядро (files) не тянет redis/h2 в рантайм.
+- **V9.8 (проверка)**: 246 тестов PASS (sdk 28 + runtime 218), make build PASS, сервер работает (26 компонентов, App 200). WS smoke: demo.create → demo.stats (SQL) = {total:1, open:1} — сквозной путь подтверждён.
+
+### 🐛 Исправлено: сломаны стили (позиционирование/отступы/шрифты)
+- [x] `--rt-space`/`--rt-radius` были пусты (theme.ts не генерировал базовые `space`/`radius` из типизированной темы). Добавлены `tokens['space']`/`tokens['radius']` (из md) в theme.ts (runtime + sdk).
+- [x] body font-family/size были захардкожены (system-ui, 16px) в ui-base app.css.ts. Исправлено на `var(--rt-font-family)`/`var(--rt-font-size)`.
+- [x] Проверено: body font = тема, 14px, bg #f5f6f8, кнопка 14px.
+
+
+
+Спроектировано (ответы пользователя):
+1. **Внешний конфиг интерфейса** — отдельный `ui.yaml` в воркспейсе (рядом с application.yaml): структура страниц/секций/примитивов, кнопки с привязкой `commandId`, тема.
+2. **UI только из конфига** — плагины регистрируют только команды/сущности/данные. `registerUi` удаляется из Plugin API. Ядро читает ui.yaml.
+3. **Полная изоляция воркспейсов** — у каждого свой EntityStore (свой каталог данных), ProjectLocks, executor dispatcher. Проекты/данные не пересекаются.
+4. **Один воркспейс** — только `default` (alt убрать).
+
+### 🏗️ В РАБОТЕ: V10 — Layout-модуль + конфигурируемый UI через YAML
+
+Спроектировано (ответы пользователя):
+1. **Layout-примитивы** как отдельный модуль: Grid, Stack, Group, Spacer, Card, Section (переносятся из ui-base).
+2. **Вложенность в YAML**: `components[]` → каждый компонент может иметь `config.children: [...]` (вложенные примитивы).
+3. **Container host (SDK)** рендерит children рекурсивно (универсальный рендерер дерева).
+4. **Стилизация**: vanilla-extract классы в модуле + inline props из YAML (gap/columns/align).
+5. **Section унифицируется** с layout-примитивами (рендерит columns + components).
+6. **Стили модулей**: builtin.css → в ui-base (ядро без UI-стилей), AppShell style.css инжектится, cssPath у примитивов ui-base. СДЕЛАНО.
+7. Редакторы: cssPath проверены, конфликт имён style.css не критичен.
+8. **children основной** (config.children), **components fallback** для совместимости.
+
+### 🐛 Исправлено: белый экран (App not registered)
+- [x] **Причина**: `pluginSdk.js` собирался с `process.env.NODE_ENV` (ReferenceError: process is not defined в браузере) + vanilla-extract CSS выполнялся в runtime ("Styles were unable to be assigned to a file"). → Все бандлы модулей падали при импорте → App не регистрировался.
+- [x] **Фикс**: `define: { 'process.env.NODE_ENV': '"production"' }` в sdk/frontend/vite.config.ts + `@vanilla-extract/vite-plugin` + CSS извлечён в `pluginSdk.css` (подключён в index.html). Makefile копирует css. 
+- [x] **Проверено** (playwright headless): приложение рендерится (сайдбар, воркспейсы, страница "Доски"), все 4 редактора + 22 компонента + App загружены, создание проекта работает.
+
+
+- [ ] V10: Storybook-хост ядра — авто-генерация стори из schema+examples примитивов модулей (V8.7 из плана).
+- [ ] V10: YAML-декларация модулей (`module.yaml` + `primitives/*.yaml` + `ws/*.yaml`) + YamlModuleLoader (V8.2).
+- [ ] Обновить README под новую структуру (уже частично).
+- [ ] Обновить CI (ci.yml): make build уже включает sdk/frontend + modules — проверить.
+
+Спроектировано (ответы пользователя):
+1. **Ядро не знает о плагинах/модулях** пока их не подключат; у ядра нет своего интерфейса и лишних зависимостей.
+2. **Все UI-примитивы** тянутся из модулей; **все логические команды** из плагинов.
+3. **Ядро через конфиги** оформляет: структуру интерфейса, стилистику, связь UI с командами (декларативно: `actions: [commandId...]`, `data: entityType`).
+4. **Редакторы** (tiptap/antv/three) — исходники и npm-зависимости переносятся в `modules/editor-*/src/main/frontend/`, у каждого модуля свой package.json. В runtime/frontend их не остаётся.
+5. **sdk/frontend = публичный TS API модулей** (`registerPrimitive`/`registerComponent`/`registerWsHandler`...). runtime-client уходит из runtime.
+6. **Всё React/Preact из runtime/frontend → ui-base** (App/AppShell/Sidebar/CommandPalette/DocsPage/Toast/Stack/Grid/...). Ядро-фронтенд = только data: main.tsx (mount), stores, WS-client, резолв примитивов, тема (data). В ui-base и AppShell в т.ч.
+7. **Механика регистрации модулей** как у плагинов: HashMap ключ → класс примитива.
+8. **gRPC/calcite → через PluginContext (готовые фичи из SDK)**:
+   - Ядро НЕ вызывает `CalciteQueryEngine`/`InfrastructureClient` напрямую.
+   - SDK предоставляет готовые команды/коннекторы (analytical SQL, data.source/data.sink), плагин регистрирует их через PluginContext, ядро только выполняет зарегистрированное.
+   - `QueryEngine`/`InfrastructureClient` выносятся из `CommandExecutor`/ядра → в SDK.
+   - Соответствующие зависимости (calcite-core, grpc-*, protobuf-*) уходят из runtime/pom.xml → в SDK (opt-in, включаются при сборке плагина, который их использует).
+9. **Хранилища** (redis/h2/db): все бэкенды остаются в runtime/pom, **конфиг выбирает активный backend при рантайме** (memory/files/hybrid/redis/db).
+10. **Фронтенд-ядро** физически остаётся в `runtime/frontend` (data-only).
+11. Связь UI↔команды: конфиг → рендерер ядра резолвит примитив из модуля и привязывает команды/данные.
+
+### ✅ V8 — завершено (модули vs плагины, фаза 1)
+
+**Сделано (фаза 1):**
+- SDK: `Module`, `ModuleContext`, `PrimitiveDefinition` (schema+examples+host+capabilities), `WsMessageHandler`.
+- Runtime: `ModuleContextImpl` (extends PluginContextImpl — модуль может и примитивы, и команды/сущности); PluginManager распознаёт Module; WS `else`-ветка маршрутизирует неизвестные типы в `wsHandlers` модулей (ответ `<type>.response`).
+- Фронтенд-ядро = только data: React-примитивы перенесены `core/primitives` → `ui-base/primitives`, AppShell/Sidebar/CommandPalette/DocsPage/ThemeProvider/styles → `ui-base/`. `core` содержит только `services/` (pure TS). Редакторы ссылаются на `ui-base/styles`. Storybook preview → ui-base styles.
+- builtin-ui → **ui-base модуль**: переименован (`UiBaseModule` : Module, `registerPrimitive` для 21 примитива с examples), config.yaml `id: ui-base`, Makefile обновлён.
+- Всё собирается: 225 backend тестов PASS, frontend build PASS, make build PASS, сервер работает (25 компонентов, ui-base грузится).
+
+### ✅ V7 — завершено (стилистика, авто-обновление, plugin-driven root, чистка)
 
 Спроектировано (ответы пользователя):
 1. **Типизированная тема в YAML** — `theme: { mode, palette:{light,dark}, typography, radii, spacing, motion }` → CSS-переменные `--rt-*`.
@@ -18,6 +104,12 @@
 3. **Авто-обновление** — реактивный `useData` по revision-сигналу + серверные подписки (убрать кнопку Обновить).
 4. **Полностью plugin-driven root** — ядро без UI: всё (даже root layout) приходит из плагина.
 5. **Чистка мёртвого кода** — убрать неиспользуемые + отчёт.
+
+### 🔧 Исправлено (регрессии V7)
+- [x] **WS 1006**: `handlePresenceJoin` при connect бросал "Channel was cancelled" (self-broadcast из connect-контекста) → coroutine падал → соединение рвалось. Обёрнуто в try/catch (+ finally presence).
+- [x] **Авто-обновление**: `revisionSignals` Map был module-level → `invalidate` (main бандл) и `useData` (runtimeClient) имели разные сигналы. Переведён в `globalSingleton`. Проверено: BEFORE=1 → 3 задачи → AFTER3=4.
+- [x] **Storybook пустой**: builtin-компоненты не были зарегистрированы в Storybook. preview.ts регистрирует все 21 через `registerComponent`; vite alias `@builtin-ui`/`@cutcrft/runtime-client`.
+- [x] **Стилистика "как раньше"**: сервер отдавал старый бандл (static не синхронизирован). Пересборка + синк.
 
 ### 🔧 Исправлено ранее: плагины не загружались (только raw json)
 - [x] **Причина**: `.plugins/` JAR были перезаписаны старыми Vue-бандлами (Makefile собирал из `.plugins/` вместо `plugins/`), которые не могли загрузиться без vue в importmap → плагины падали → пустые страницы.
@@ -670,7 +762,7 @@ export function cycle() { /* ... */ }
 - [x] `useData`: `useSignalEffect` — реактивный reload по revision-сигналу + subscribe к entityType.
 - [x] Table: `showRefresh` default → false (кнопка Обновить скрыта, авто-обновление вместо неё).
 - [x] **Смоук PASS**: браузерный тест — после мутации через WS (MUTATED=SUCCESS) badge сменился open→done без ручного клика (T_AFTER=done).
-- [ ] Мягкие анимации при обновлении данных (fade/flash).
+- [x] Мягкие анимации при обновлении данных: UiTable — flash tbody через animationApi при изменении данных.
 
 ### V7.4 — Полностью plugin-driven root
 - [x] Backend: `AppShell`/`ShellTopbar`/`ShellSidebar`/`ShellAction` в AppConfiguration.
@@ -678,17 +770,200 @@ export function cycle() { /* ... */ }
 - [x] Frontend: `AppShell`/`AppConfiguration` типы; App.tsx рендерит плагинные shell actions (navigate/command) вместо fallback Back/Forward/Theme.
 - [x] Демо-плагин: `shell.topbar.actions` (nav-tasks, nav-boards).
 - [x] **Смоук PASS**: topbar рендерит только плагинные кнопки ({{demo.page.tasks}}, {{demo.page.boards}}), fallback Back/Forward/Theme скрыты; клик по плагинной кнопке → навигация на tasks.
+- [x] Sidebar: использует `app.shell.sidebar.groups` (из плагина) при наличии, fallback на navigation. CommandPalette читает страницы/команды из конфига (plugin-driven данные).
 - [x] Backend 225 тестов PASS.
-- [ ] Демо-плагин: sidebar тоже из плагина (пока навигация из конфига).
-- [ ] CommandPalette/Sidebar переедут в плагин.
 
 ### V7.5 — Чистка мёртвого кода
-- [ ] Удалить неиспользуемые primitives (Stack, Slot, Portal), ThemeProvider.
-- [ ] Удалить неиспользуемые типы/экспорты из runtimeClient/componentSpec.
-- [ ] Скрипт-отчёт неиспользуемых файлов/экспортов.
-- [ ] `npm run build` PASS, backend тесты PASS.
+- [x] Удалён `tokens.css.ts` (мёртвый placeholder, не импортировался).
+- [x] Удалён `global.css.ts` (полный дубль `global.css` — легаси Vanilla Extract).
+- [x] Удалён пустой каталог `src/pages/`.
+- [x] Примитивы (Stack/Slot/Portal/Grid) СОХРАНЕНЫ — это переиспользуемая UI-библиотека для плагинов (экспорт через runtimeClient).
+- [x] `npm run build` PASS, Storybook PASS, backend 225 тестов PASS.
 
 ---
+
+## Фаза V8 — Модули vs Плагины (разделение ответственности)
+
+### V8.1 — SDK: Module API + PrimitiveDefinition
+- [x] `ModuleContext` (SDK): `registerPrimitive(type, name, schema, examples, bundlePath, capabilities)`, `registerWsHandler(type, handler)`.
+- [x] `PrimitiveDefinition`: `{type, name, version, schema (JSON Schema config), examples: [config-примеры], capabilities}`.
+- [x] `Module` абстрактный класс (аналог Plugin) + `ModuleManager` (аналог PluginManager).
+- [x] `registerPrimitive` → реестр примитивов (в ядре), отдельный от pluginComponents.
+
+### V8.2 — YAML-декларация модуля
+- [~] `module.yaml` + `primitives/*.yaml` (schema + examples) + `ws/*.yaml` (расширения протокола).
+- [ ] `YamlModuleLoader` (SDK): парсинг модулей (аналог YamlPluginLoader).
+- [x] Ядро: загрузка модулей (Kotlin + YAML), отдельный реестр модулей.
+
+### V8.3 — Фронтенд-ядро = только data
+- [x] Вынести React-компоненты из `frontend/src/core` → в ui-base модуль.
+- [x] Оставить в ядре: stores, реестры (типы), WS client, event bus, сборка дерева UI.
+- [x] `renderer-host` абстракция (componentRegistry.resolveComponent уже в ядре): резолв примитива по типу из реестра модулей.
+- [x] Удалить `core/primitives` (переезжают в ui-base).
+
+### V8.4 — Базовый UI-модуль (ui-base)
+- [x] `ui-base` модуль: примитивы (UiBaseModule.registerPrimitive, 21 тип) (Text/Image/Badge/Button/Card/Tabs/Grid/Stat/List/Table/Form/Input/Select/...).
+- [x] Хост-примитивы (Container/Page/Section/Layer/Portal/Stack/Slot/Toast) в ui-base.
+- [x] AppShell (topbar/sidebar) + CommandPalette + Sidebar → ui-base.
+- [~] Тема: рендер токенов, применение стилистики (ThemeProvider → ui-base).
+- [ ] Storybook: stories из schema+examples (авто-генерация).
+
+### V8.5 — Классификация существующих артефактов
+- [x] builtin-ui → ui-base модуль (переименован, UiBaseModule + registerPrimitive)
+- [ ] editor-* → editor модули (примитивы-редакторы).
+- [ ] demo → плагин (команды/сущности/страницы).
+- [ ] demo-storage → плагин.
+- [x] Обновить Makefile/build (builtin-ui → ui-base).
+
+### V8.6 — WS-протокол: расширения модулей
+- [x] `registerWsHandler(type, handler)` — модуль обрабатывает свои message types.
+- [x] Ядро маршрутизирует неизвестные типы в модули (WsSessionHandler else → wsHandlers).
+
+### V8.7 — Storybook-хост ядра
+- [ ] Ядро: Storybook-хост, авто-генерация стори из schema+examples всех примитивов модулей.
+- [ ] /uidocs отображает все импортированные примитивы.
+
+---
+
+## Фаза V9 — Ядро/SDK не знают о плагинах и модулях
+
+### V9.0 — Аудит зависимостей (завершён, решения приняты)
+- [x] gRPC/protobuf, calcite — реальные фичи ядра, но должны стать SDK-фичами через PluginContext.
+- [x] redis/h2/db — хранилища, остаются в pom ядра, конфиг выбирает активный backend при рантайме.
+- [x] Фронтенд-ядро остаётся в runtime/frontend (data-only).
+
+### V9.1 — Фронтенд-ядро = только data
+- [x] Редакторы удалены из ядра (editor/ → modules/editor-*), tiptap/antv/three убраны из runtime/frontend/package.json.
+- [x] editorRegistry восстановлен в renderer/, vite.editor-build.config.ts удалён.
+- [x] ui-base удалён из ядра (runtime/frontend/src/ui-base), базовые стили → src/styles/. runtimeClient.ts + vite.runtime-client.config.ts удалены. React overlay-хосты удалены (в ui-base). components/ (пустой) удалён.
+- [x] Оставить в ядре: `main.tsx` (mount), `store/*`, `protocol/*`, `events/*`, `renderer/*` (резолв примитивов), `overlay/overlayService`, `plugin/pluginLoader`, `core/services`, `utils/*`, `styles/global.css+buitlin.css`.
+- [x] Ядро-фронтенд не имеет UI: рендерит App через resolveComponent (из ui-base модуля).
+- [x] tiptap/antv/three удалены из runtime/frontend/package.json и vite-конфигов.
+
+### V9.2 — Исходники редакторов в modules
+- [x] Перенести `runtime/frontend/src/editor/*` → `modules/editor-*/frontend/src/` (каждый модуль несёт свои исходники).
+- [x] У каждого editor-модуля свой package.json (tiptap/antv/three у них, не у ядра).
+- [x] vite.editor-build.config.ts заменён на per-module vite.config: сборка из modules, не из runtime/frontend.
+- [x] Редакторы переписаны на Module + registerPrimitive (richtext/canvas/diagram/scene3d). Проверено: бандлы отдаются, экстернализуют preact/signals, antv/three/tiptap встроены в свои бандлы.
+
+### V9.3 — ui-base модуль содержит весь UI
+- [x] ui-base собирается из modules/ui-base/frontend (vite.config перенесён, пути исправлены; компоненты используют @cutcrft/runtime-client → alias на pluginSdk).
+- [x] App/AppShell/OverlayHost/примитивы/ThemeProvider скопированы в modules/ui-base/frontend/src (импорты → @cutcrft/plugin-sdk).
+- [x] app.js собран (AppShell bundle, 25KB), ui-base Module регистрирует примитив "App".
+- [x] main.tsx: загрузка ui-base как модуля, рендер App через resolveComponent (не статический импорт).
+- [ ] ui-base несёт theme-применение (рендер токенов `--rt-*` — ThemeProvider в ui-base, проверить).
+- [ ] Почистить runtime/frontend/src/ui-base (дубликат после того как ui-base стал модулем).
+
+### V9.4 — sdk/frontend = публичный API модулей
+- [x] Переместить runtime-client API в `sdk/frontend/src/index.ts` (data+registry+services+типы; без UI-примитивов).
+- [x] sdk/frontend автономный (копии data-слоя), собран через vite → `dist/pluginSdk/pluginSdk.js` (single-file ESM).
+- [x] importmap: `@cutcrft/plugin-sdk` → /pluginSdk.js, `@cutcrft/runtime-client` → alias (тот же бандл).
+- [x] SDK экспортирует Container/ComponentHost (renderer-host) + @vanilla-extract/css зависимость.
+- [x] editorRegistry восстановлен в ядре (renderer/editorRegistry.ts).
+- [~] runtimeClient.js ещё собирается ядром (лишний артефакт) — убрать из vite.config после финальной проверки.
+
+### V9.5 — Связь UI ↔ команды через конфиг
+- [x] В YAML-конфиге примитив объявляет `actions: [commandId...]`, `data: { entityType }` (уже работает: yaml-demo pages.yaml).
+- [x] Рендерер ядра: по типу примитива резолвит из реестра модулей, привязывает команды/данные из конфига (bindingEngine).
+- [x] Ядро не знает ни о командах модулей, ни о примитивах — только резолвит по типу.
+
+### V9.6 — gRPC/calcite → SDK (готовые фичи через PluginContext)
+- [x] AnalyticalCommand переписан: ядро передаёт `projectData` (Map<entityType, List<Map>>) в params, команда сама выполняет SQL через CalciteQueryEngine из SDK. Ядро не знает calcite.
+- [x] CalciteQueryEngine + EntityRowsTable перенесены из runtime → SDK (sdk/src/main/kotlin/runtime/infrastructure/query).
+- [x] InfrastructureService + gRPC-клиент + InfrastructureRegistry перенесены из runtime → SDK.
+- [x] calcite-core, grpc-*, protobuf-* удалены из runtime/pom.xml → добавлены в sdk/pom.xml.
+- [x] guava конфликт (33.2.1-android vs 33.3.0-jre) — фикс через dependencyManagement (guava 33.3.0-jre).
+- [x] Тесты: CalciteQueryEngineTest → sdk/test (7), AnalyticalCommandRoutingTest → runtime/test (1). Итого 246 PASS (sdk 28 + runtime 218).
+
+### V9.7 — Хранилища: конфиг выбирает backend
+- [x] Все бэкенды (memory/files/hybrid/redis/db) в pom ядра.
+- [x] StorageFactory выбирает по конфигу: redis/db инициализируются только если backend в конфиге = redis/db (проверено). Базовое ядро (files) не тянет redis/h2 в рантайм.
+
+### V9.8 — Проверка и чистка
+- [x] runtime/frontend не содержит tiptap/antv/three и ни одного React-компонента примитива.
+- [x] 246 backend тестов PASS, make build PASS, сервер работает.
+- [x] Демо-приложение (demo/) собирает приложение из конфига + модули + плагины.
+
+---
+
+## Фаза V10 — Layout-модуль + конфигурируемый UI через YAML
+
+### V10.1 — Стили модулей (фикс регрессии)
+- [x] builtin.css переехал из ядра → в ui-base модуль (cssPath у всех Ui*-примитивов). Ядро без UI-стилей.
+- [x] AppShell style.css инжектится через cssPath App-примитива (pluginLoader injectCss). AppShell позиционируется (display:flex).
+- [x] Ui*-примитивы ui-base: cssPath → frontend/builtin.css.
+- [x] Редакторы: cssPath ок, AppShell flex подтверждён браузерным тестом.
+
+### V10.2 — Container host: рекурсивный рендер children
+- [x] SDK Container рендерит `config.children` рекурсивно через себя (renderChildren).
+- [x] ComponentDefinition (SDK + runtime) получил поле `children`.
+- [x] WorkspaceConfigurationBuilder.buildNestedChildren: рекурсивный парсинг children из config.children.
+
+### V10.3 — Layout-модуль (modules/ui-layout)
+- [x] Примитивы: Grid (columns/rows/gap), Stack (direction/wrap), Group, Spacer (flex:1), Card (title+padding+children), Section (columns+children).
+- [x] renderLayoutChildren (common.tsx): children из config, fallback на components.
+- [x] UiLayoutModule: registerPrimitive для 6 примитивов, multi-entry vite build, package.json.
+- [x] Page (ui-base) резолвит Section через Container (sectionToComponent), а не импортирует напрямую.
+- [x] Проверено в браузере: секции рендерятся (.ui-layout-section, grid 3 колонки), raw json исчез.
+
+### V10.4 — YAML: вложенные children
+- [x] WorkspaceConfigurationBuilder.buildNestedChildren: компонент может иметь `config.children: [...]` (рекурсивно в ComponentDefinition).
+- [x] ComponentDefinition (SDK + runtime) добавлено поле `children`.
+- [x] YamlUiParser: children проходят как часть config (не требуется отдельный парсинг).
+
+### V10.5 — Section унификация + демо
+- [x] Section — layout-примитив (ui-layout), Page резолвит его через Container (sectionToComponent), не жёстко.
+- [x] UiCard/UiGrid удалены из ui-base (их роль закрывает ui-layout: Card/Grid с children).
+- [x] Демо-страница "Layout": Stack→Card→Grid→Stat/Button через YAML children. Проверено в браузере (рендер + клик по вложенной кнопке).
+
+### V10.6 — Проверка
+- [~] make build PASS, тесты PASS, сервер рендерит layout.
+- [ ] Обновить README (layout-модуль, children-синтаксис).
+
+---
+
+## Фаза V11 — Внешний конфиг интерфейса + полная изоляция воркспейсов
+
+### V11.1 — ui.yaml (внешний конфиг интерфейса)
+- [x] Создан `demo/config/ui.yaml`: app/theme/navigation/pages (структура + кнопки с commandId).
+- [x] `UiYamlLoader` (runtime): парсит ui.yaml → RegisteredUi (App/Page/Navigation/Overlay/Shortcut/Subscription) + ThemeConfig.
+- [x] `ConfigLoader.parseTheme` стал публичным.
+- [x] WorkspaceBuilder: загружает ui.yaml (resolveUiYamlPath рядом с application.yaml), применяет тему в config.ui, uiResult.uiDefinitions имеет приоритет над registerUi.
+- [x] Проверено: страница boards из ui.yaml рендерится, тема применена (--rt-color-bg #f5f6f8).
+- [x] Все 8 страниц в ui.yaml: tasks, docs, diagram, scene, board, layout-demo, export, boards.
+- [x] Все UI-компоненты перенесены: 5 оверлеев, 4 триггера, 4 шортката, 10 навигаций, подписки.
+
+### V11.2 — registerUi удаляется из Plugin API
+- [x] DemoPlugin: registerUi() метод + registerEditorPages() удалены. UiComponent data class удалена.
+- [x] StoragePlugin: registerUi() удалён (export page/nav/shortcut/subscription перенесены в ui.yaml).
+- [x] registerUi API остаётся в SDK (PluginContext/ModuleContext) для yaml-плагинов (YamlPluginLoader).
+- [ ] Убрать обработку registerUi из PluginBootstrap/PluginContextImpl/ModuleContextImpl (если не нужна).
+- [ ] YamlUiParser: переориентировать на чтение ui.yaml воркспейса (не из плагинов).
+
+### V11.3 — Полная изоляция воркспейсов
+- [x] WorkspaceBuilder создаёт свой EntityStore (via StorageFactory), ProjectLocks, dispatcher.
+- [x] sharedStore/projectLocks/dispatcher удалены из WorkspaceBuilder конструктора.
+- [x] WorkspaceServices добавлен `entityStore: EntityStore` для shutdown hooks.
+- [x] Main.kt: удалены shared infrastructure creation, unused imports.
+- [x] 218 тестов PASS.
+
+### V11.4 — Один воркспейс (default)
+- [x] demo/workspaces/alt удалён.
+- [ ] loadAdditionalWorkspaces упростить (или убрать) если workspaces/ больше не нужен.
+
+### V11.5 — Проверка
+- [x] Демо собирается из ui.yaml + модули (примитивы) + плагины (команды).
+- [x] make build PASS, тесты PASS (218), сервер рендерит из ui.yaml.
+- [x] Фикс стилей: --rt-space/--rt-radius генерируются, body font-family/size из темы.
+- [ ] Обновить README.
+
+---
+
+## Фаза V12 - требуется проектирование
+- [ ] Выпиливание инфраструктурных команд (gRPC/rest) из ядра и SDK.
+- [ ] Заменить Ktor на Quarkus (runtime + SDK).
+- [ ] Оптимизировать и адаптировать код под GraalVM Native Image (runtime + SDK).
+- [ ] Улучшить конфигурируемость системы сделать возможность полного отключения ui 
 
 ## Риски и митигация
 

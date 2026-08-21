@@ -33,9 +33,10 @@ class HttpEndpoints(
     /** Finds the storybook-static output regardless of the working directory. */
     private fun resolveUidocsDir(root: String?): File {
         val candidates = listOfNotNull(root) + listOf(
+            "runtime/frontend/storybook-static",
             "frontend/storybook-static",
             "storybook-static",
-            "../frontend/storybook-static"
+            "../runtime/frontend/storybook-static"
         )
         for (candidate in candidates) {
             val f = File(candidate)

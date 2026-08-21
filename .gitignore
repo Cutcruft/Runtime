@@ -13,23 +13,20 @@
 # Maven build output
 target/
 
-# Plugin build artifacts
-plugins/*/target/
-plugins/*/*.jar
+# Module build artifacts
+modules/*/target/
+modules/*/*.jar
 
-# Assembled plugin JARs (runtime loads from here)
-.plugins/
+# All runtime data / assembled builds (tmp/)
+tmp/
 
 # Frontend
 */node_modules/
 */dist/
+*/storybook-static/
 
 # Copied frontend build (populated by `make build`)
 runtime/src/main/resources/static/
 
-# Assembled plugins (populated by `make plugin`)
-plugins/demo/
-plugins/demo-storage/
-
-# Storybook build output
-frontend/storybook-static/
+# Assembled plugins (populated by `make plugin` / `make plugins`)
+tmp/plugins/

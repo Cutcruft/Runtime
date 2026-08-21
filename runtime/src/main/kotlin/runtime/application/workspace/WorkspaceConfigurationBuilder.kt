@@ -423,7 +423,8 @@ class WorkspaceConfigurationBuilder(
                         .mapNotNull { (key, value) ->
                             if (value == null) null else key.toString() to value
                         }
-                        .toMap()
+                        .toMap(),
+                    children = buildNestedChildren(map)
                 )
             }
             SectionDefinition(
@@ -435,10 +436,31 @@ class WorkspaceConfigurationBuilder(
         }.filterNotNull()
     }
 
+    /**
+     * V10 — recursively parses nested children from a component map. Children may
+     * be declared as `config.children: [...]` (each with type/config/children).
+     */
+    private fun buildNestedChildren(parent: Map<*, *>): List<ComponentDefinition> {
+        val config = parent["config"] as? Map<*, *> ?: return emptyList()
+        val rawChildren = config["children"] as? List<*> ?: return emptyList()
+        return rawChildren.mapNotNull { item ->
+            val map = item as? Map<*, *> ?: return@mapNotNull null
+            val type = map["type"] as? String ?: return@mapNotNull null
+            ComponentDefinition(
+                type = type,
+                config = (map["config"] as? Map<*, *>).orEmpty()
+                    .mapNotNull { (key, value) ->
+                        if (value == null) null else key.toString() to value
+                    }
+                    .toMap(),
+                children = buildNestedChildren(map)
+            )
+        }
+    }
+
     private fun buildApp(
         uiDefinitions: List<RegisteredUi>,
-        navigation: List<NavigationEntry>,
-        pages: List<PageDefinition>
+        navigation: List<NavigationEntry>,        pages: List<PageDefinition>
     ): AppConfiguration {
         val defaults = uiConfig.app
         val appDef = uiDefinitions

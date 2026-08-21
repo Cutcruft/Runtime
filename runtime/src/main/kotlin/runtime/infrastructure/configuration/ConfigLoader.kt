@@ -190,7 +190,7 @@ class ConfigLoader(
         (map[key] as? Map<String, Any>) ?: emptyMap()
 
     @Suppress("UNCHECKED_CAST")
-    private fun parseTheme(theme: Map<String, Any>): ThemeConfig {
+    fun parseTheme(theme: Map<String, Any>): ThemeConfig {
         val paletteRaw = theme["palette"] as? Map<String, Any> ?: emptyMap()
         val palette = paletteRaw.mapNotNull { (modeName, raw) ->
             val p = raw as? Map<String, Any> ?: return@mapNotNull null

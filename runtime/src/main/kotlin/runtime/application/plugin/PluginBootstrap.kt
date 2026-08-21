@@ -4,6 +4,9 @@ import runtime.application.i18n.MessageRegistry
 import runtime.domain.models.Messages
 import runtime.domain.models.RegisteredUi
 import runtime.domain.models.RuntimeConfig
+import runtime.domain.module.ModuleContext
+import runtime.domain.module.PrimitiveDefinition
+import runtime.domain.module.WsMessageHandler
 import runtime.domain.plugin.FrontendComponentDefinition
 import runtime.domain.plugin.PluginId
 import runtime.domain.plugin.yaml.YamlCommandParser
@@ -12,6 +15,7 @@ import runtime.domain.repositories.CommandRegistry
 import runtime.domain.repositories.EntityRegistry
 import runtime.domain.repositories.InfrastructureRegistry
 import runtime.infrastructure.i18n.MessageCatalogLoader
+import runtime.infrastructure.module.ModuleContextImpl
 import runtime.infrastructure.plugin.PluginClassLoader
 import runtime.infrastructure.plugin.PluginContextImpl
 import runtime.infrastructure.plugin.PluginDescriptorLoader
@@ -35,6 +39,8 @@ class PluginBootstrap(
         val loadedPluginIds: Set<PluginId>,
         val uiDefinitions: List<RegisteredUi>,
         val frontendComponents: List<Pair<PluginId, FrontendComponentDefinition>>,
+        val primitives: List<Pair<PluginId, PrimitiveDefinition>>,
+        val wsHandlers: Map<String, WsMessageHandler>,
         val messageRegistry: MessageRegistry,
         val scriptEngine: KotlinScriptEngine
     )
@@ -63,11 +69,13 @@ class PluginBootstrap(
         // Bootstrap plugins
         val uiDefinitions = mutableListOf<RegisteredUi>()
         val frontendComponents = mutableListOf<Pair<PluginId, FrontendComponentDefinition>>()
+        val primitives = mutableListOf<Pair<PluginId, PrimitiveDefinition>>()
+        val wsHandlers = mutableMapOf<String, WsMessageHandler>()
         val pluginManager = PluginManager(
             resolver = DependencyResolver(),
             instantiate = { descriptor ->
                 val clazz = pluginLoader.loadClass(descriptor, PluginClassLoader::class.java.classLoader)
-                clazz.getDeclaredConstructor().newInstance() as runtime.domain.plugin.Plugin
+                clazz.getDeclaredConstructor().newInstance()
             },
             createContext = { pluginId ->
                 PluginContextImpl(pluginId, entityRegistry, commandRegistry, infrastructureRegistry,
@@ -77,6 +85,14 @@ class PluginBootstrap(
                     onFrontendComponentRegistered = { fc ->
                         frontendComponents += pluginId to fc
                     }
+                )
+            },
+            moduleContext = { pluginId ->
+                ModuleContextImpl(pluginId, entityRegistry, commandRegistry, infrastructureRegistry,
+                    onUiRegistered = { ui -> uiDefinitions += RegisteredUi(pluginId = pluginId, definition = ui) },
+                    onFrontendComponentRegistered = { fc -> frontendComponents += pluginId to fc },
+                    onPrimitiveRegistered = { id, p -> primitives += id to p },
+                    onWsHandlerRegistered = { type, handler -> wsHandlers[type] = handler }
                 )
             },
             messages = messages
@@ -133,6 +149,8 @@ class PluginBootstrap(
             loadedPluginIds = loadedPluginIds,
             uiDefinitions = uiDefinitions,
             frontendComponents = frontendComponents,
+            primitives = primitives,
+            wsHandlers = wsHandlers,
             messageRegistry = messageRegistry,
             scriptEngine = scriptEngine
         )

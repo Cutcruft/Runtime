@@ -53,6 +53,7 @@ class WebServer(
                     ws.eventPublisher,
                     collaborationEnabled = ws.runtime.config.collaboration.enabled,
                     cursorsEnabled = ws.runtime.config.collaboration.cursorsEnabled,
+                    wsHandlers = ws.wsHandlers,
                     concurrencyLimit = ws.runtime.config.command.wsConcurrency ?: 8,
                     workspaceId = workspaceId,
                     projectId = projectId
@@ -70,6 +71,7 @@ class WebServer(
                     ws.eventPublisher,
                     collaborationEnabled = ws.runtime.config.collaboration.enabled,
                     cursorsEnabled = ws.runtime.config.collaboration.cursorsEnabled,
+                    wsHandlers = ws.wsHandlers,
                     concurrencyLimit = ws.runtime.config.command.wsConcurrency ?: 8,
                     workspaceId = workspaceId
                 ).handle(this)
@@ -85,6 +87,7 @@ class WebServer(
                     ws.eventPublisher,
                     collaborationEnabled = ws.runtime.config.collaboration.enabled,
                     cursorsEnabled = ws.runtime.config.collaboration.cursorsEnabled,
+                    wsHandlers = ws.wsHandlers,
                     concurrencyLimit = ws.runtime.config.command.wsConcurrency ?: 8
                 ).handle(this)
             }

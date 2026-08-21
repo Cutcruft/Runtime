@@ -1,0 +1,15 @@
+script:
+  name: stats
+  description: YAML demo statistics
+  group: YAML Demo
+  parameters:
+    - name: filter
+      type: string
+      required: false
+  code: |
+    fun run(context: runtime.domain.command.CommandContext, params: Any?): Any? {
+        val projects = context.objectList<Map<String, Any?>>(runtime.domain.entity.EntityType("yamldemo.project"))
+        val all = projects.values()
+        val active = all.count { it["status"] == "active" }
+        return mapOf("total" to all.size, "active" to active)
+    }

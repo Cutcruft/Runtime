@@ -1,0 +1,4 @@
+id: editor-canvas
+version: 1.0.0
+apiVersion: 1
+main: com.example.editors.EditorCanvasModule

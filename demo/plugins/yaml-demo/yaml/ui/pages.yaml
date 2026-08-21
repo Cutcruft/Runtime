@@ -1,0 +1,80 @@
+Page:
+  id: yaml-projects
+  title: YAML Projects
+  sections:
+    - id: stats
+      layout: grid
+      columns: 3
+      components:
+        - type: Stat
+          config:
+            label: Total
+            data:
+              command: yamldemo.stats
+              entityType: yamldemo.project
+            valueKey: total
+            tone: blue
+        - type: Stat
+          config:
+            label: Active
+            data:
+              command: yamldemo.stats
+              entityType: yamldemo.project
+            valueKey: active
+            tone: green
+    - id: list
+      layout: grid
+      columns: 1
+      components:
+        - type: Table
+          config:
+            data:
+              command: yamldemo.projectlist
+              entityType: yamldemo.project
+            deleteCommand: yamldemo.projectdelete
+            searchable: true
+            sortable: true
+            pagination:
+              pageSize: 10
+              pageSizeOptions: [5, 10, 25]
+            columns:
+              - key: name
+                label: Name
+                sortable: true
+              - key: status
+                label: Status
+                render: badge
+                badge:
+                  tones:
+                    planning: amber
+                    active: green
+                    archived: gray
+              - key: description
+                label: Description
+        - type: Form
+          config:
+            command: yamldemo.projectcreate
+            submitLabel: Create project
+            fields:
+              - name: name
+                label: Name
+                type: text
+                required: true
+                minLength: 2
+              - name: description
+                label: Description
+                type: textarea
+              - name: status
+                label: Status
+                type: select
+                options:
+                  - { value: planning, label: Planning }
+                  - { value: active, label: Active }
+                  - { value: archived, label: Archived }
+Navigation:
+  id: nav-yaml-projects
+  label: YAML Projects
+  pageId: yaml-projects
+  order: 7
+  group: YAML Demo
+  icon: 🗂

@@ -36,7 +36,8 @@ class WsSessionHandler(
     private val cursorsEnabled: Boolean = false,
     private val concurrencyLimit: Int = 8,
     private val workspaceId: String? = null,
-    private val projectId: String? = null
+    private val projectId: String? = null,
+    private val wsHandlers: Map<String, runtime.domain.module.WsMessageHandler> = emptyMap()
 ) {
     suspend fun handle(session: DefaultWebSocketSession) {
         val sessionId = UUID.randomUUID().toString()
@@ -69,7 +70,13 @@ class WsSessionHandler(
                             )
                         )
                         if (collaborationEnabled) {
-                            handlePresenceJoin(sessionId, project.id, null, sendMutex)
+                            try {
+                                handlePresenceJoin(sessionId, project.id, null, sendMutex)
+                            } catch (e: Exception) {
+                                // Presence is best-effort during the connect handshake; a
+                                // failed self-broadcast must not tear down the session.
+                                e.printStackTrace()
+                            }
                         }
                     } else {
                         sendErrorLocked(
@@ -126,14 +133,18 @@ class WsSessionHandler(
                 messages.format(Messages.COMMAND_EXECUTION_FAILED, "message" to (e.message ?: ""))
             )
         } finally {
-            if (collaborationEnabled && boundProjectId != null) {
-                val identity = presenceManager.leave(boundProjectId!!, sessionId)
-                eventPublisher.unbindSession(sessionId)
-                if (identity != null) {
-                    broadcastPresence(boundProjectId!!, WsMessageType.PRESENCE_LEAVE, sessionId, identity)
+            try {
+                if (collaborationEnabled && boundProjectId != null) {
+                    val identity = presenceManager.leave(boundProjectId!!, sessionId)
+                    eventPublisher.unbindSession(sessionId)
+                    if (identity != null) {
+                        broadcastPresence(boundProjectId!!, WsMessageType.PRESENCE_LEAVE, sessionId, identity)
+                    }
+                } else {
+                    eventPublisher.unbindSession(sessionId)
                 }
-            } else {
-                eventPublisher.unbindSession(sessionId)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
             scope.cancel()
             activeSessions.remove(sessionId)
@@ -243,6 +254,19 @@ class WsSessionHandler(
                 return HandleResult.Ok
             }
             else -> {
+                val handler = wsHandlers[envelope.type]
+                if (handler != null) {
+                    val payload = envelope.payload as? Map<String, Any?> ?: emptyMap()
+                    val response = handler.handle(payload)
+                    if (response != null) {
+                        sendLocked(session, sendMutex, WsEnvelope(
+                            type = envelope.type + ".response",
+                            requestId = envelope.requestId,
+                            payload = response
+                        ))
+                    }
+                    return HandleResult.Ok
+                }
                 sendErrorLocked(session, sendMutex, envelope, messages.format(Messages.UNKNOWN_MESSAGE_TYPE, "type" to envelope.type))
                 return HandleResult.Ok
             }

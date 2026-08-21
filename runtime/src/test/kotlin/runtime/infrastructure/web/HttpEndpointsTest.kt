@@ -67,9 +67,6 @@ class HttpEndpointsTest {
         )
         // The test only exercises HTTP config serving; use the real builder for a valid slice.
         val builder = runtime.application.workspace.WorkspaceBuilder(
-            sharedStore = runtime.infrastructure.storage.DefaultEntityStore(),
-            projectLocks = runtime.application.command.ProjectLocks(),
-            executorDispatcher = kotlinx.coroutines.Dispatchers.Default,
             configPath = null
         )
         val services = builder.build(id, runtimeConfig)
@@ -91,7 +88,8 @@ class HttpEndpointsTest {
             projectService = services.projectService,
             eventPublisher = services.eventPublisher,
             presenceManager = services.presenceManager,
-            activeSessions = services.activeSessions
+            activeSessions = services.activeSessions,
+            entityStore = services.entityStore
         )
     }
 

@@ -142,7 +142,9 @@ data class SectionDefinition(
 
 data class ComponentDefinition(
     val type: String,
-    val config: Map<String, Any>
+    val config: Map<String, Any>,
+    /** V10 — nested child components (layout primitives), rendered recursively by the Container host. */
+    val children: List<ComponentDefinition> = emptyList()
 )
 
 data class ShortcutEntry(

@@ -1,0 +1,5 @@
+locale: en
+messages:
+  yaml.demo.title: YAML Projects
+  yaml.demo.stat.total: Total projects
+  yaml.demo.stat.active: Active projects

@@ -1,12 +1,18 @@
 package runtime.domain.command
 
+import runtime.infrastructure.query.CalciteQueryEngine
+
 /**
- * Analytical command that runs a SQL SELECT over the project's entities.
+ * Analytical command that runs a SQL SELECT over a project's entities.
  *
- * The SDK only declares the SQL string; the runtime engine (Apache Calcite)
- * executes it against virtual tables derived from the project's entity lists
- * (schema auto-mapped from the plugin models via Jackson). Parameters may be
- * referenced in the SQL as `{paramName}` and are substituted from [params].
+ * The core runtime passes the project's data as a `projectData` entry in the
+ * params map: `Map<entityType, List<Map<String, Any?>>>` (entity types like
+ * `demo.task` become virtual tables `demo.task`; values are Jackson-serialized
+ * plugin models). The SDK's own engine (Apache Calcite) executes the SELECT over
+ * those in-memory tables — the core has no Calcite dependency.
+ *
+ * Parameters may be referenced in the SQL as `{paramName}` and are substituted
+ * from the remaining [params] before parsing.
  */
 open class AnalyticalCommand @JvmOverloads constructor(
     name: String,
@@ -20,6 +26,12 @@ open class AnalyticalCommand @JvmOverloads constructor(
         require(sql.isNotBlank()) { "Analytical command SQL must not be blank" }
     }
 
-    override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult =
-        CommandResult.error("Analytical command must be executed by the runtime engine")
+    override suspend fun executeInternal(context: CommandContext, params: Any?): CommandResult {
+        val map = params as? Map<*, *> ?: emptyMap<Any, Any>()
+        @Suppress("UNCHECKED_CAST")
+        val projectData = map["projectData"] as? Map<String, List<Map<String, Any?>>>
+            ?: return CommandResult.error("Analytical command requires 'projectData' in params (provided by the core)")
+        val sqlParams = map.filterKeys { it != "projectData" }
+        return CalciteQueryEngine().execute(projectData, sql, sqlParams)
+    }
 }

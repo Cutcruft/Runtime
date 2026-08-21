@@ -1,0 +1,11 @@
+// Preact primitives — reusable UI library for plugins (via @cutcrft/runtime-client)
+export { Container } from './Container'
+export { Page } from './Page'
+export { Section } from './Section'
+export { Layer } from './Layer'
+export { Tabs } from './Tabs'
+export { ToastViewport } from './Toast'
+export { Stack } from './Stack'
+export { Grid } from './Grid'
+export { Slot } from './Slot'
+export { Portal } from './Portal'

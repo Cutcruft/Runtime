@@ -2,6 +2,7 @@ package runtime.application.workspace
 
 import runtime.application.session.CommandDispatchService
 import runtime.application.session.SessionManager
+import runtime.domain.storage.EntityStore
 
 /**
  * V5 — all services that belong to one isolated workspace. The WS handler and
@@ -15,5 +16,7 @@ class WorkspaceServices(
     val projectService: runtime.application.project.ProjectService,
     val eventPublisher: runtime.infrastructure.ws.WsEventPublisher,
     val presenceManager: runtime.infrastructure.ws.PresenceManager,
-    val activeSessions: MutableMap<String, io.ktor.websocket.DefaultWebSocketSession>
+    val activeSessions: MutableMap<String, io.ktor.websocket.DefaultWebSocketSession>,
+    val wsHandlers: Map<String, runtime.domain.module.WsMessageHandler> = emptyMap(),
+    val entityStore: EntityStore
 )

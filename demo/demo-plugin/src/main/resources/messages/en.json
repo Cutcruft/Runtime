@@ -75,5 +75,11 @@
   "stencil.ellipse": "Ellipse",
   "stencil.process": "Process",
   "stencil.decision": "Decision",
-  "nav.group.demo": "Demo"
+  "nav.group.demo": "Demo",
+  "canvas.menu.copy": "Copy element",
+  "tasks.delete.confirm": "Delete this task?",
+  "tasks.menu.duplicate": "Duplicate",
+  "tasks.menu.move": "Move task",
+  "tasks.menu.open": "Open",
+  "tasks.reopen.confirm": "Reopen this task?"
 }

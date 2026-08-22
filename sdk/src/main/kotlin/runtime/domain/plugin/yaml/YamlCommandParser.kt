@@ -1,7 +1,6 @@
 package runtime.domain.plugin.yaml
 
 import org.yaml.snakeyaml.Yaml
-import runtime.domain.command.AnalyticalCommand
 import runtime.domain.command.Command
 import runtime.domain.command.CommandParameter
 import runtime.domain.command.CommandResult
@@ -138,7 +137,9 @@ object YamlCommandParser {
             file != null -> resolver(file) ?: throw IllegalArgumentException("SQL file not found: $file")
             else -> throw IllegalArgumentException("SQL command '$name' requires 'query' or 'file'")
         }
-        return AnalyticalCommand(name = name, sql = query, description = description, group = group)
+        return sqlCommandFactory?.invoke(name, query, description, group) ?: throw IllegalArgumentException(
+            "SQL command '$name' requires the runtime to be configured with a SQL command factory"
+        )
     }
 
     private fun buildRest(rest: Map<String, Any?>): Command {
@@ -187,4 +188,7 @@ object YamlCommandParser {
 
     /** Injected by the runtime to avoid SDK-internal circular wiring. */
     var crudFactory: ((EntityType, String, String?) -> List<Command>)? = null
+
+    /** Injected by the runtime; builds an analytical SQL command. */
+    var sqlCommandFactory: ((name: String, sql: String, description: String, group: String?) -> Command)? = null
 }

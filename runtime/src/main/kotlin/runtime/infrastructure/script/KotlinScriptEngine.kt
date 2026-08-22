@@ -222,6 +222,19 @@ class KotlinScriptEngine(
         }
     }
 
+    companion object {
+        /**
+         * Returns a no-op script engine for native mode where KTS compilation is unavailable.
+         */
+        fun noop(): ScriptEngine = object : ScriptEngine {
+            override fun evaluate(code: String, params: Any?, context: CommandContext): CommandResult =
+                CommandResult.error("KTS scripts are not available in native (GraalVM) mode")
+
+            override fun validate(code: String): String? =
+                "KTS scripts are not available in native (GraalVM) mode"
+        }
+    }
+
     private fun formatCause(e: Throwable): String {
         val message = e.message?.takeIf { it.isNotBlank() }
         return if (message != null) "${e::class.simpleName}: $message" else e::class.simpleName ?: "unknown error"

@@ -1,0 +1,23 @@
+{
+  "reflection": [
+    {"name": "runtime.infrastructure.web.HttpResource", "allDeclaredMethods": true},
+    {"name": "runtime.infrastructure.ws.WsResource", "allDeclaredMethods": true},
+    {"name": "runtime.domain.models.RuntimeConfig", "allDeclaredFields": true, "allDeclaredMethods": true, "allDeclaredConstructors": true},
+    {"name": "runtime.domain.models.ServerConfig", "allDeclaredFields": true, "allDeclaredMethods": true, "allDeclaredConstructors": true},
+    {"name": "runtime.domain.models.StorageConfig", "allDeclaredFields": true, "allDeclaredMethods": true, "allDeclaredConstructors": true},
+    {"name": "runtime.domain.models.PluginsConfig", "allDeclaredFields": true, "allDeclaredMethods": true, "allDeclaredConstructors": true},
+    {"name": "runtime.domain.models.UiConfig", "allDeclaredFields": true, "allDeclaredMethods": true, "allDeclaredConstructors": true},
+    {"name": "runtime.domain.models.ThemeConfig", "allDeclaredFields": true, "allDeclaredMethods": true, "allDeclaredConstructors": true},
+    {"name": "runtime.domain.models.ProjectConfig", "allDeclaredFields": true, "allDeclaredMethods": true, "allDeclaredConstructors": true},
+    {"name": "runtime.domain.models.PluginDescriptor", "allDeclaredFields": true, "allDeclaredMethods": true, "allDeclaredConstructors": true},
+    {"name": "runtime.domain.models.EntitySchema", "allDeclaredFields": true, "allDeclaredMethods": true, "allDeclaredConstructors": true},
+    {"name": "runtime.domain.models.EntityField", "allDeclaredFields": true, "allDeclaredMethods": true, "allDeclaredConstructors": true},
+    {"name": "runtime.domain.models.EntityDefinition", "allDeclaredFields": true, "allDeclaredMethods": true, "allDeclaredConstructors": true},
+    {"name": "runtime.domain.models.CommandDefinition", "allDeclaredFields": true, "allDeclaredMethods": true, "allDeclaredConstructors": true},
+    {"name": "runtime.domain.models.LayerSchema", "allDeclaredFields": true, "allDeclaredMethods": true, "allDeclaredConstructors": true},
+    {"name": "runtime.domain.models.UiDefinition", "allDeclaredFields": true, "allDeclaredMethods": true, "allDeclaredConstructors": true},
+    {"name": "runtime.domain.models.ComponentDefinition", "allDeclaredFields": true, "allDeclaredMethods": true, "allDeclaredConstructors": true},
+    {"name": "runtime.domain.models.CommandRequest", "allDeclaredFields": true, "allDeclaredMethods": true, "allDeclaredConstructors": true},
+    {"name": "runtime.domain.models.CommandResponse", "allDeclaredFields": true, "allDeclaredMethods": true, "allDeclaredConstructors": true}
+  ]
+}

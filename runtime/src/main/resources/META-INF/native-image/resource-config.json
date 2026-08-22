@@ -1,0 +1,12 @@
+{
+  "resources": {
+    "includes": [
+      {"pattern": "runtime\\.yaml"},
+      {"pattern": "plugins/.*"},
+      {"pattern": "messages/.*"},
+      {"pattern": "static/.*"},
+      {"pattern": "META-INF/.*"},
+      {"pattern": "*.properties"}
+    ]
+  }
+}

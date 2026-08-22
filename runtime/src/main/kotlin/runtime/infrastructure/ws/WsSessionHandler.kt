@@ -1,21 +1,13 @@
 package runtime.infrastructure.ws
 
-import io.ktor.websocket.DefaultWebSocketSession
-import io.ktor.websocket.Frame
-import io.ktor.websocket.readText
 import java.util.UUID
+import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.locks.ReentrantLock
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.ClosedReceiveChannelException
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.consumeAsFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.runBlocking
 import runtime.application.session.CommandDispatchService
 import runtime.domain.command.CommandResult
 import runtime.domain.models.Messages
@@ -28,7 +20,7 @@ import runtime.domain.repositories.SessionRepository
 class WsSessionHandler(
     private val dispatchService: CommandDispatchService,
     private val sessionRepository: SessionRepository,
-    private val activeSessions: MutableMap<String, DefaultWebSocketSession>,
+    private val activeSessions: MutableMap<String, WsSession>,
     private val messages: Messages,
     private val presenceManager: PresenceManager,
     private val eventPublisher: WsEventPublisher,
@@ -39,28 +31,27 @@ class WsSessionHandler(
     private val projectId: String? = null,
     private val wsHandlers: Map<String, runtime.domain.module.WsMessageHandler> = emptyMap()
 ) {
-    suspend fun handle(session: DefaultWebSocketSession) {
+    suspend fun handle(session: WsSession) {
         val sessionId = UUID.randomUUID().toString()
         sessionRepository.register(Session(sessionId, workspaceId = workspaceId))
         activeSessions[sessionId] = session
 
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val sendMutex = Mutex()
-        val channel = Channel<WsEnvelope>(capacity = concurrencyLimit)
-        var boundProjectId: ProjectId? = null
+        val sendLock = ReentrantLock()
+        val queue = LinkedBlockingQueue<WsEnvelope>(concurrencyLimit)
+        val boundProjectId = AtomicReference<ProjectId?>(null)
+        val executor = Executors.newFixedThreadPool(concurrencyLimit)
 
         try {
-            // WS v2: bind the session to the project carried in the URL and acknowledge.
             if (projectId != null) {
-                val parsed = runCatching { ProjectId(java.util.UUID.fromString(projectId)) }.getOrNull()
+                val parsed = runCatching { ProjectId(UUID.fromString(projectId)) }.getOrNull()
                 if (parsed != null) {
                     val project = resolveProject(parsed)
                     if (project != null) {
                         sessionRepository.get(sessionId)?.project = project
-                        boundProjectId = project.id
+                        boundProjectId.set(project.id)
                         eventPublisher.bindSession(sessionId, project.id)
                         sendLocked(
-                            session, sendMutex,
+                            session, sendLock,
                             WsEnvelope(
                                 type = WsMessageType.PROJECT_BOUND.value,
                                 payload = mapOf(
@@ -71,74 +62,55 @@ class WsSessionHandler(
                         )
                         if (collaborationEnabled) {
                             try {
-                                handlePresenceJoin(sessionId, project.id, null, sendMutex)
+                                handlePresenceJoin(sessionId, project.id, null, sendLock)
                             } catch (e: Exception) {
-                                // Presence is best-effort during the connect handshake; a
-                                // failed self-broadcast must not tear down the session.
                                 e.printStackTrace()
                             }
                         }
                     } else {
                         sendErrorLocked(
-                            session, sendMutex, null,
+                            session, sendLock, null,
                             messages.format(Messages.PROJECT_NOT_FOUND, "projectId" to projectId)
                         )
                     }
                 } else {
                     sendErrorLocked(
-                        session, sendMutex, null,
+                        session, sendLock, null,
                         messages.format(Messages.INVALID_PROJECT_ID, "projectId" to projectId)
                     )
                 }
             }
 
             val workers = (1..concurrencyLimit).map {
-                scope.launch {
-                    for (envelope in channel) {
-                        try {
-                            val result = handleEnvelope(session, sessionId, envelope, sendMutex)
-                            if (result is HandleResult.ProjectBound) {
-                                boundProjectId = result.projectId
-                            }
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            sendErrorLocked(
-                                session, sendMutex, envelope,
-                                messages.format(Messages.COMMAND_EXECUTION_FAILED, "message" to (e.message ?: ""))
-                            )
-                        }
-                    }
-                }
+                executor.submit { workerLoop(queue, session, sessionId, sendLock, boundProjectId) }
             }
 
             try {
-                session.incoming.consumeAsFlow().collect { frame ->
-                    if (frame is Frame.Text) {
-                        val envelope = WsProtocol.decode(frame.readText())
-                        channel.send(envelope)
-                    }
+                while (session.isActive) {
+                    val text = session.receiveBlocking() ?: break
+                    val envelope = WsProtocol.decode(text)
+                    queue.offer(envelope)
                 }
             } finally {
-                channel.close()
-                workers.forEach { it.cancel() }
+                repeat(concurrencyLimit) { queue.offer(POISON_PILL) }
+                executor.shutdown()
+                executor.awaitTermination(5, TimeUnit.SECONDS)
+                executor.shutdownNow()
             }
-        } catch (e: ClosedReceiveChannelException) {
-            // Session closed normally
-        } catch (e: CancellationException) {
-            throw e
+        } catch (_: CancellationException) {
+            throw CancellationException("cancelled")
         } catch (e: Exception) {
             sendErrorLocked(
-                session, sendMutex, null,
+                session, sendLock, null,
                 messages.format(Messages.COMMAND_EXECUTION_FAILED, "message" to (e.message ?: ""))
             )
         } finally {
             try {
-                if (collaborationEnabled && boundProjectId != null) {
-                    val identity = presenceManager.leave(boundProjectId!!, sessionId)
+                if (collaborationEnabled && boundProjectId.get() != null) {
+                    val identity = presenceManager.leave(boundProjectId.get()!!, sessionId)
                     eventPublisher.unbindSession(sessionId)
                     if (identity != null) {
-                        broadcastPresence(boundProjectId!!, WsMessageType.PRESENCE_LEAVE, sessionId, identity)
+                        broadcastPresence(boundProjectId.get()!!, WsMessageType.PRESENCE_LEAVE, sessionId, identity)
                     }
                 } else {
                     eventPublisher.unbindSession(sessionId)
@@ -146,23 +118,26 @@ class WsSessionHandler(
             } catch (e: Exception) {
                 e.printStackTrace()
             }
-            scope.cancel()
             activeSessions.remove(sessionId)
             sessionRepository.remove(sessionId)
         }
     }
 
     private fun resolveProject(projectId: ProjectId): Project? {
-        // WsSessionHandler only has the session repository; look up via the dispatch service.
         return dispatchService.getProject(projectId)
     }
 
-    private suspend fun sendLocked(
-        session: DefaultWebSocketSession,
-        sendMutex: Mutex,
+    private fun sendLocked(
+        session: WsSession,
+        lock: ReentrantLock,
         envelope: WsEnvelope
     ) {
-        sendMutex.withLock { session.send(Frame.Text(WsProtocol.encode(envelope))) }
+        lock.lock()
+        try {
+            session.sendBlocking(WsProtocol.encode(envelope))
+        } finally {
+            lock.unlock()
+        }
     }
 
     private sealed interface HandleResult {
@@ -170,27 +145,51 @@ class WsSessionHandler(
         data class ProjectBound(val projectId: ProjectId) : HandleResult
     }
 
-    private suspend fun handleEnvelope(
-        session: DefaultWebSocketSession,
+    internal fun workerLoop(
+        queue: LinkedBlockingQueue<WsEnvelope>,
+        session: WsSession,
+        sessionId: String,
+        sendLock: ReentrantLock,
+        boundProjectId: AtomicReference<ProjectId?>
+    ) {
+        while (true) {
+            val envelope = queue.take()
+            if (envelope === POISON_PILL) break
+            try {
+                val result = handleEnvelope(session, sessionId, envelope, sendLock)
+                if (result is HandleResult.ProjectBound) {
+                    boundProjectId.set(result.projectId)
+                }
+            } catch (e: Exception) {
+                sendErrorLocked(
+                    session, sendLock, envelope,
+                    messages.format(Messages.COMMAND_EXECUTION_FAILED, "message" to (e.message ?: ""))
+                )
+            }
+        }
+    }
+
+    private fun handleEnvelope(
+        session: WsSession,
         sessionId: String,
         envelope: WsEnvelope,
-        sendMutex: Mutex
+        sendLock: ReentrantLock
     ): HandleResult {
         when (envelope.type) {
             WsMessageType.COMMAND_EXECUTE.value -> {
                 val commandId = envelope.payload["commandId"] as? String
                     ?: return HandleResult.Ok.also {
-                        sendErrorLocked(session, sendMutex, envelope, messages[Messages.MISSING_COMMAND_ID])
+                        sendErrorLocked(session, sendLock, envelope, messages[Messages.MISSING_COMMAND_ID])
                     }
                 val params = envelope.payload["params"]
 
-                val result = dispatchService.dispatch(sessionId, commandId, params)
+                val result = runBlocking { dispatchService.dispatch(sessionId, commandId, params) }
 
                 when (result) {
                     is CommandDispatchService.DispatchResult.Result ->
-                        sendCommandResult(session, sendMutex, envelope, result.commandResult)
+                        sendCommandResult(session, sendLock, envelope, result.commandResult)
                     is CommandDispatchService.DispatchResult.Protocol ->
-                        sendErrorLocked(session, sendMutex, envelope, result.message)
+                        sendErrorLocked(session, sendLock, envelope, result.message)
                 }
 
                 if (result is CommandDispatchService.DispatchResult.Result) {
@@ -198,15 +197,15 @@ class WsSessionHandler(
                     val value = result.commandResult.value as? Map<String, Any?>
                     val projectIdStr = value?.get("projectId") as? String
                     if (projectIdStr != null) {
-                        val projectId = try {
+                        val pid = try {
                             ProjectId(UUID.fromString(projectIdStr))
                         } catch (_: Exception) { null }
-                        if (projectId != null) {
-                            eventPublisher.bindSession(sessionId, projectId)
+                        if (pid != null) {
+                            eventPublisher.bindSession(sessionId, pid)
                             if (collaborationEnabled) {
-                                handlePresenceJoin(sessionId, projectId, null, sendMutex)
+                                handlePresenceJoin(sessionId, pid, null, sendLock)
                             }
-                            return HandleResult.ProjectBound(projectId)
+                            return HandleResult.ProjectBound(pid)
                         }
                     }
                 }
@@ -215,9 +214,10 @@ class WsSessionHandler(
             WsMessageType.SUBSCRIBE.value -> {
                 val entityType = envelope.payload["entityType"] as? String
                 if (entityType == null) {
-                    sendErrorLocked(session, sendMutex, envelope, "Missing entityType for subscribe")
+                    sendErrorLocked(session, sendLock, envelope, "Missing entityType for subscribe")
                     return HandleResult.Ok
                 }
+                @Suppress("UNCHECKED_CAST")
                 val filter = envelope.payload["filter"] as? Map<String, Any?> ?: emptyMap()
                 sessionRepository.get(sessionId)?.addSubscription(
                     SubscriptionFilter(entityType = entityType, filter = filter)
@@ -227,9 +227,10 @@ class WsSessionHandler(
             WsMessageType.UNSUBSCRIBE.value -> {
                 val entityType = envelope.payload["entityType"] as? String
                 if (entityType == null) {
-                    sendErrorLocked(session, sendMutex, envelope, "Missing entityType for unsubscribe")
+                    sendErrorLocked(session, sendLock, envelope, "Missing entityType for unsubscribe")
                     return HandleResult.Ok
                 }
+                @Suppress("UNCHECKED_CAST")
                 val filter = envelope.payload["filter"] as? Map<String, Any?> ?: emptyMap()
                 sessionRepository.get(sessionId)?.removeSubscription(entityType, filter)
                 return HandleResult.Ok
@@ -238,28 +239,30 @@ class WsSessionHandler(
                 if (!collaborationEnabled) return HandleResult.Ok
                 val name = envelope.payload["name"] as? String ?: "Anonymous"
                 val color = envelope.payload["color"] as? String
-                val projectId = resolveSessionProject(sessionId)
-                if (projectId != null) {
-                    handlePresenceJoin(sessionId, projectId, envelope, sendMutex, name, color)
+                val pid = resolveSessionProject(sessionId)
+                if (pid != null) {
+                    handlePresenceJoin(sessionId, pid, envelope, sendLock, name, color)
                 }
                 return HandleResult.Ok
             }
             WsMessageType.CURSOR_UPDATE.value -> {
                 if (!cursorsEnabled || !collaborationEnabled) return HandleResult.Ok
-                val projectId = resolveSessionProject(sessionId) ?: return HandleResult.Ok
+                val pid = resolveSessionProject(sessionId) ?: return HandleResult.Ok
+                @Suppress("UNCHECKED_CAST")
                 val enrichedPayload = LinkedHashMap(envelope.payload as? Map<String, Any?> ?: emptyMap())
                 enrichedPayload["sessionId"] = sessionId
                 val enriched = WsEnvelope(envelope.type, envelope.requestId, enrichedPayload)
-                broadcastToProjectExcept(projectId, sessionId, enriched)
+                broadcastToProjectExcept(pid, sessionId, enriched)
                 return HandleResult.Ok
             }
             else -> {
                 val handler = wsHandlers[envelope.type]
                 if (handler != null) {
+                    @Suppress("UNCHECKED_CAST")
                     val payload = envelope.payload as? Map<String, Any?> ?: emptyMap()
-                    val response = handler.handle(payload)
+                    val response = runBlocking { handler.handle(payload) }
                     if (response != null) {
-                        sendLocked(session, sendMutex, WsEnvelope(
+                        sendLocked(session, sendLock, WsEnvelope(
                             type = envelope.type + ".response",
                             requestId = envelope.requestId,
                             payload = response
@@ -267,17 +270,17 @@ class WsSessionHandler(
                     }
                     return HandleResult.Ok
                 }
-                sendErrorLocked(session, sendMutex, envelope, messages.format(Messages.UNKNOWN_MESSAGE_TYPE, "type" to envelope.type))
+                sendErrorLocked(session, sendLock, envelope, messages.format(Messages.UNKNOWN_MESSAGE_TYPE, "type" to envelope.type))
                 return HandleResult.Ok
             }
         }
     }
 
-    private suspend fun handlePresenceJoin(
+    private fun handlePresenceJoin(
         sessionId: String,
         projectId: ProjectId,
         identityEnvelope: WsEnvelope?,
-        sendMutex: Mutex,
+        sendLock: ReentrantLock,
         name: String? = null,
         color: String? = null
     ) {
@@ -299,15 +302,14 @@ class WsSessionHandler(
                 }
             )
         )
-        // Send the list to the joining session directly; broadcast to all others.
         val self = activeSessions[sessionId]
         if (self != null) {
-            sendLocked(self, sendMutex, listEnvelope)
+            sendLocked(self, sendLock, listEnvelope)
         }
         broadcastToProjectExcept(projectId, sessionId, listEnvelope)
     }
 
-    private suspend fun broadcastPresence(
+    private fun broadcastPresence(
         projectId: ProjectId,
         type: WsMessageType,
         sessionId: String,
@@ -324,15 +326,15 @@ class WsSessionHandler(
         broadcastToProjectExcept(projectId, sessionId, envelope)
     }
 
-    private suspend fun broadcastToProject(projectId: ProjectId, envelope: WsEnvelope) {
+    private fun broadcastToProject(projectId: ProjectId, envelope: WsEnvelope) {
         eventPublisher.broadcastToProject(projectId, envelope)
     }
 
-    private suspend fun broadcastToProjectExcept(projectId: ProjectId, exceptSessionId: String, envelope: WsEnvelope) {
+    private fun broadcastToProjectExcept(projectId: ProjectId, exceptSessionId: String, envelope: WsEnvelope) {
         val sessions = dispatchService.getSessionsForProject(projectId)
-        for (session in sessions) {
-            if (session.sessionId == exceptSessionId) continue
-            eventPublisher.sendToSession(session.sessionId, envelope)
+        for (s in sessions) {
+            if (s.sessionId == exceptSessionId) continue
+            eventPublisher.sendToSession(s.sessionId, envelope)
         }
     }
 
@@ -341,9 +343,9 @@ class WsSessionHandler(
         return session.project?.id
     }
 
-    private suspend fun sendCommandResult(
-        session: DefaultWebSocketSession,
-        sendMutex: Mutex,
+    private fun sendCommandResult(
+        session: WsSession,
+        sendLock: ReentrantLock,
         envelope: WsEnvelope,
         result: CommandResult
     ) {
@@ -372,12 +374,12 @@ class WsSessionHandler(
             requestId = envelope.requestId,
             payload = payload
         )
-        sendMutex.withLock { session.send(Frame.Text(WsProtocol.encode(response))) }
+        sendLocked(session, sendLock, response)
     }
 
-    private suspend fun sendErrorLocked(
-        session: DefaultWebSocketSession,
-        sendMutex: Mutex,
+    private fun sendErrorLocked(
+        session: WsSession,
+        sendLock: ReentrantLock,
         envelope: WsEnvelope?,
         message: String
     ) {
@@ -386,6 +388,10 @@ class WsSessionHandler(
             requestId = envelope?.requestId,
             payload = mapOf("message" to message)
         )
-        sendMutex.withLock { session.send(Frame.Text(WsProtocol.encode(response))) }
+        sendLocked(session, sendLock, response)
+    }
+
+    companion object {
+        private val POISON_PILL = WsEnvelope(type = "__poison__", payload = emptyMap())
     }
 }

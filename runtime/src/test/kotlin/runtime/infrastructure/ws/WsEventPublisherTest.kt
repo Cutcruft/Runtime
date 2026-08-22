@@ -1,10 +1,7 @@
 package runtime.infrastructure.ws
 
-import io.ktor.websocket.DefaultWebSocketSession
-import io.ktor.websocket.Frame
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import runtime.application.session.SessionManager
@@ -28,7 +25,7 @@ class WsEventPublisherTest {
     @Test
     fun `collaboration disabled suppresses mutation events`() = runBlocking {
         val sessionManager = createSessionManager()
-        val activeSessions = mutableMapOf<String, DefaultWebSocketSession>()
+        val activeSessions = mutableMapOf<String, WsSession>()
         val presenceManager = PresenceManager()
         val publisher = WsEventPublisher(sessionManager, activeSessions, presenceManager, collaborationEnabled = false)
 
@@ -36,7 +33,6 @@ class WsEventPublisherTest {
         val entityType = EntityType("demo.task")
         val objectId = ObjectId.generate()
 
-        // publish should not throw when collaboration is disabled
         publisher.publish(
             RuntimeEvent.ObjectChanged(
                 projectId = projectId,
@@ -45,7 +41,6 @@ class WsEventPublisherTest {
                 value = null
             )
         )
-        // No sessions connected, so no broadcast anyway
     }
 
     @Test

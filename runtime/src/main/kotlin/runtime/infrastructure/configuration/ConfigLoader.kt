@@ -29,7 +29,7 @@ import runtime.domain.models.UiConfig
 import runtime.domain.models.WsConfig
 
 class ConfigLoader(
-    private val bundledResource: String = "/application.yaml"
+    private val bundledResource: String = "/runtime.yaml"
 ) {
     private val yaml = Yaml()
 
@@ -118,6 +118,7 @@ class ConfigLoader(
                     } ?: emptyList()
             ),
             ui = UiConfig(
+                enabled = ui["enabled"] as? Boolean ?: true,
                 pluginOrder = (ui["pluginOrder"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
                 landingPage = ui["landingPage"] as? String,
                 navInclude = (section(ui, "nav")["include"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),

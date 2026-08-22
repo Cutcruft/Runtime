@@ -3,9 +3,6 @@ package runtime.infrastructure.ws
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import java.util.concurrent.ConcurrentHashMap
-import io.ktor.websocket.DefaultWebSocketSession
-import io.ktor.websocket.Frame
-import io.ktor.websocket.send
 import runtime.application.event.EventPublisher
 import runtime.application.session.SessionManager
 import runtime.domain.models.ProjectId
@@ -14,7 +11,7 @@ import runtime.domain.models.Session
 
 class WsEventPublisher(
     private val sessionManager: SessionManager,
-    private val activeSessions: MutableMap<String, DefaultWebSocketSession>,
+    private val activeSessions: MutableMap<String, WsSession>,
     private val presenceManager: PresenceManager,
     private val collaborationEnabled: Boolean = false
 ) : EventPublisher {
@@ -30,6 +27,10 @@ class WsEventPublisher(
     }
 
     override suspend fun publish(event: RuntimeEvent) {
+        publishBlocking(event)
+    }
+
+    fun publishBlocking(event: RuntimeEvent) {
         if (!collaborationEnabled) return
         when (event) {
             is RuntimeEvent.ObjectChanged -> {
@@ -45,7 +46,7 @@ class WsEventPublisher(
                             "value" to event.value
                         )
                     )
-                    webSocket.send(Frame.Text(WsProtocol.encode(envelope)))
+                    webSocket.sendBlocking(WsProtocol.encode(envelope))
                 }
             }
             is RuntimeEvent.ProjectEvent -> {
@@ -56,17 +57,12 @@ class WsEventPublisher(
                         type = WsMessageType.PROJECT_EVENT.value,
                         payload = event.payload + ("type" to event.type)
                     )
-                    webSocket.send(Frame.Text(WsProtocol.encode(envelope)))
+                    webSocket.sendBlocking(WsProtocol.encode(envelope))
                 }
             }
         }
     }
 
-    /**
-     * A session receives an object.changed only if it has subscribed to the entity type
-     * and the event value matches at least one of its subscription filters (when a filter
-     * is non-empty). Sessions with no subscriptions receive nothing (opt-in).
-     */
     private fun sessionAccepts(session: Session, event: RuntimeEvent.ObjectChanged): Boolean {
         return acceptsSubscription(session, event.entityType.value, event.value)
     }
@@ -74,7 +70,6 @@ class WsEventPublisher(
     companion object {
         private val mapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
 
-        /** Coerces a raw event value (data object, list, map, primitive) into a Map for filter matching. */
         private fun asMap(value: Any?): Map<*, *>? {
             return when (value) {
                 is Map<*, *> -> value
@@ -84,7 +79,6 @@ class WsEventPublisher(
             }
         }
 
-        /** Pure filter matcher: used by the publisher and unit tests. */
         fun acceptsSubscription(session: Session, entityType: String, value: Any?): Boolean {
             val filters = session.subscriptions[entityType] ?: return false
             if (filters.isEmpty()) return true
@@ -98,27 +92,26 @@ class WsEventPublisher(
         }
     }
 
-    suspend fun broadcastToProject(projectId: ProjectId, envelope: WsEnvelope) {
+    fun broadcastToProject(projectId: ProjectId, envelope: WsEnvelope) {
         val sessions = sessionManager.sessionsForProject(projectId)
         for (session in sessions) {
             val webSocket = activeSessions[session.sessionId] ?: continue
-            webSocket.send(Frame.Text(WsProtocol.encode(envelope)))
+            webSocket.sendBlocking(WsProtocol.encode(envelope))
         }
     }
 
-    suspend fun sendToSession(sessionId: String, envelope: WsEnvelope) {
+    fun sendToSession(sessionId: String, envelope: WsEnvelope) {
         val webSocket = activeSessions[sessionId] ?: return
-        webSocket.send(Frame.Text(WsProtocol.encode(envelope)))
+        webSocket.sendBlocking(WsProtocol.encode(envelope))
     }
 
-    /** Broadcasts a commands.reloaded envelope to all active sessions (after plugin reload). */
-    suspend fun broadcastCommandsReloaded(commands: List<Map<String, Any?>>, entities: List<String>) {
+    fun broadcastCommandsReloaded(commands: List<Map<String, Any?>>, entities: List<String>) {
         val envelope = WsEnvelope(
             type = WsMessageType.COMMANDS_RELOADED.value,
             payload = mapOf("commands" to commands, "entities" to entities)
         )
         for (webSocket in activeSessions.values) {
-            webSocket.send(Frame.Text(WsProtocol.encode(envelope)))
+            webSocket.sendBlocking(WsProtocol.encode(envelope))
         }
     }
 }

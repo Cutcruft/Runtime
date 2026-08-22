@@ -8,8 +8,8 @@ import runtime.infrastructure.query.CalciteQueryEngine
  * The core runtime passes the project's data as a `projectData` entry in the
  * params map: `Map<entityType, List<Map<String, Any?>>>` (entity types like
  * `demo.task` become virtual tables `demo.task`; values are Jackson-serialized
- * plugin models). The SDK's own engine (Apache Calcite) executes the SELECT over
- * those in-memory tables — the core has no Calcite dependency.
+ * plugin models). The runtime's own engine (Apache Calcite) executes the SELECT
+ * over those in-memory tables.
  *
  * Parameters may be referenced in the SQL as `{paramName}` and are substituted
  * from the remaining [params] before parsing.

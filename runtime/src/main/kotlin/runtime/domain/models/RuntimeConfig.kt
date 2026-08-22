@@ -82,6 +82,7 @@ data class AuditConfig(
 )
 
 data class UiConfig(
+    val enabled: Boolean = true,
     val pluginOrder: List<String>,
     val landingPage: String?,
     val navInclude: List<String>,

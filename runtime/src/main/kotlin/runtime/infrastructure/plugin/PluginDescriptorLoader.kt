@@ -8,7 +8,7 @@ import runtime.domain.plugin.PluginId
 import runtime.domain.plugin.PluginVersion
 
 class PluginDescriptorLoader(
-    private val configFileName: String = "config.yaml",
+    val configFileName: String = "config.yaml",
     private val defaultApiVersion: Int = 1
 ) {
     private val yaml = Yaml()

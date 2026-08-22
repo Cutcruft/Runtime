@@ -64,6 +64,12 @@ build: frontend plugins
 	cp -r $(FRONTEND_DIR)/dist/* $(BACKEND_STATIC)/
 	mvn package -DskipTests
 
+native: frontend plugins
+	mkdir -p $(BACKEND_STATIC)
+	cp -r $(FRONTEND_DIR)/dist/* $(BACKEND_STATIC)/
+	mvn package -DskipTests -Pnative
+	@echo "Native image: runtime/target/cutcruft"
+
 dev:
 	mkdir -p $(BACKEND_STATIC)
 	cp -r $(FRONTEND_DIR)/dist/* $(BACKEND_STATIC)/ 2>/dev/null || true

@@ -27,14 +27,15 @@
 
     <properties>
         <kotlin.version>2.3.0</kotlin.version>
-        <ktor.version>3.5.2</ktor.version>
+        <quarkus.version>3.17.5</quarkus.version>
         <jackson.version>2.17.2</jackson.version>
         <calcite.version>1.38.0</calcite.version>
         <grpc.version>1.68.1</grpc.version>
         <protobuf.version>3.25.5</protobuf.version>
         <snakeyaml.version>2.3</snakeyaml.version>
         <guava.version>33.3.0-jre</guava.version>
-        <kotlinx.serialization.version>1.8.0</kotlinx.serialization.version>
+            <kotlinx.serialization.version>1.8.0</kotlinx.serialization.version>
+            <kotlinx.coroutines.version>1.9.0</kotlinx.coroutines.version>
         <junit.version>5.11.0</junit.version>
         <mockk.version>1.13.12</mockk.version>
         <lettuce.version>6.4.2.RELEASE</lettuce.version>
@@ -48,6 +49,13 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>io.quarkus</groupId>
+                <artifactId>quarkus-bom</artifactId>
+                <version>${quarkus.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>io.runtime</groupId>
                 <artifactId>runtime-sdk</artifactId>
@@ -67,6 +75,11 @@
                 <groupId>org.jetbrains.kotlinx</groupId>
                 <artifactId>kotlinx-serialization-json</artifactId>
                 <version>${kotlinx.serialization.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jetbrains.kotlinx</groupId>
+                <artifactId>kotlinx-coroutines-core-jvm</artifactId>
+                <version>${kotlinx.coroutines.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.yaml</groupId>
@@ -124,31 +137,6 @@
                 <version>${protobuf.version}</version>
             </dependency>
             <dependency>
-                <groupId>io.ktor</groupId>
-                <artifactId>ktor-server-core-jvm</artifactId>
-                <version>${ktor.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.ktor</groupId>
-                <artifactId>ktor-server-netty-jvm</artifactId>
-                <version>${ktor.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.ktor</groupId>
-                <artifactId>ktor-server-websockets-jvm</artifactId>
-                <version>${ktor.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.ktor</groupId>
-                <artifactId>ktor-server-content-negotiation-jvm</artifactId>
-                <version>${ktor.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.ktor</groupId>
-                <artifactId>ktor-serialization-jackson-jvm</artifactId>
-                <version>${ktor.version}</version>
-            </dependency>
-            <dependency>
                 <groupId>org.slf4j</groupId>
                 <artifactId>slf4j-simple</artifactId>
                 <version>2.0.16</version>
@@ -168,6 +156,12 @@
             <dependency>
                 <groupId>org.jetbrains.kotlin</groupId>
                 <artifactId>kotlin-test-junit5</artifactId>
+                <version>${kotlin.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-test</artifactId>
                 <version>${kotlin.version}</version>
                 <scope>test</scope>
             </dependency>
@@ -230,4 +224,28 @@
             </plugins>
         </pluginManagement>
     </build>
+
+    <profiles>
+        <!-- Default (JVM) profile: active when -Pnative is NOT specified -->
+        <profile>
+            <id>default</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <!-- All dependencies are in main <dependencies> block — full feature set -->
+        </profile>
+        <!-- Native image profile: excludes JVM-only libs (Calcite, gRPC, KTS, H2/HikariCP) -->
+        <profile>
+            <id>native</id>
+            <activation>
+                <property>
+                    <name>native</name>
+                </property>
+            </activation>
+            <properties>
+                <quarkus.native.enabled>true</quarkus.native.enabled>
+                <skipTests>true</skipTests>
+            </properties>
+        </profile>
+    </profiles>
 </project>

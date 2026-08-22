@@ -549,5 +549,5 @@ pages:
                         type: text
                         required: true
                       - name: description
-                        label: "{{demo.boards.create.desc}}"
+                        label: "{{demo.boards.create.description}}"
                         type: textarea

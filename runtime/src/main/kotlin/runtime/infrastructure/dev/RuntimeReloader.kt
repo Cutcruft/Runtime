@@ -32,7 +32,7 @@ class RuntimeReloader(
     private val infrastructureRegistry: InfrastructureRegistry,
     private val httpEndpoints: HttpEndpoints,
     private val pluginAssetsService: PluginAssetsService,
-    private val activeSessions: MutableMap<String, io.ktor.websocket.DefaultWebSocketSession>,
+    private val activeSessions: MutableMap<String, runtime.infrastructure.ws.WsSession>,
     private val sessionRepository: SessionRepository,
     private val messages: Messages,
     private val eventPublisher: WsEventPublisher? = null

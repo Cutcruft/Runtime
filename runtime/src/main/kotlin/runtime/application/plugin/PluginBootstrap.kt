@@ -1,5 +1,6 @@
 package runtime.application.plugin
 
+import runtime.RuntimeMode
 import runtime.application.i18n.MessageRegistry
 import runtime.domain.models.Messages
 import runtime.domain.models.RegisteredUi
@@ -22,6 +23,7 @@ import runtime.infrastructure.plugin.PluginDescriptorLoader
 import runtime.infrastructure.plugin.PluginLoader
 import runtime.infrastructure.plugin.YamlResourceLoader
 import runtime.infrastructure.script.KotlinScriptEngine
+import runtime.infrastructure.script.ScriptEngine
 
 /**
  * Shared plugin bootstrap logic used by both initial startup (Main.kt)
@@ -42,7 +44,7 @@ class PluginBootstrap(
         val primitives: List<Pair<PluginId, PrimitiveDefinition>>,
         val wsHandlers: Map<String, WsMessageHandler>,
         val messageRegistry: MessageRegistry,
-        val scriptEngine: KotlinScriptEngine
+        val scriptEngine: ScriptEngine
     )
 
     fun bootstrap(): Result {
@@ -57,6 +59,14 @@ class PluginBootstrap(
                 runtime.domain.script.SchemaCrudCommands.list(schema, prefix, group),
                 runtime.domain.script.SchemaCrudCommands.validate(schema, prefix, group)
             )
+        }
+
+        // Wire YAML SQL command generation (SDK delegates to runtime AnalyticalCommand).
+        // Disabled in native mode — Calcite Janino requires runtime bytecode generation.
+        if (RuntimeMode.isJvm) {
+            YamlCommandParser.sqlCommandFactory = { name, sql, description, group ->
+                runtime.domain.command.AnalyticalCommand(name = name, sql = sql, description = description, group = group)
+            }
         }
 
         // Discover plugins
@@ -111,13 +121,17 @@ class PluginBootstrap(
             loadYamlForPlugin(pluginId.value, descriptor, yamlResourceLoader, context, yamlMessageEntries)
         }
 
-        // Build script engine
-        val scriptEngine = KotlinScriptEngine(
-            pluginJars = descriptors.mapNotNull { descriptor ->
-                runCatching { java.io.File(descriptor.jarPath) }.getOrNull()
-            },
-            pluginLoaders = pluginLoader.loadedClassLoaders()
-        )
+        // Build script engine (KTS only in JVM mode — requires Kotlin compiler)
+        val scriptEngine = if (RuntimeMode.isJvm) {
+            KotlinScriptEngine(
+                pluginJars = descriptors.mapNotNull { descriptor ->
+                    runCatching { java.io.File(descriptor.jarPath) }.getOrNull()
+                },
+                pluginLoaders = pluginLoader.loadedClassLoaders()
+            )
+        } else {
+            KotlinScriptEngine.noop()
+        }
 
         // Load message catalogs
         val messageRegistry = MessageRegistry(config.i18n.defaultLocale)
@@ -169,17 +183,21 @@ class PluginBootstrap(
         yamlMessageEntries: MutableMap<String, Map<String, String>>
     ) {
         val jarPath = descriptor.jarPath
-        val isDir = java.io.File(jarPath).isDirectory
-        val entries = if (isDir) {
-            yamlResourceLoader.listYamlEntriesFromDir(jarPath)
-        } else {
-            yamlResourceLoader.listYamlEntries(jarPath)
+        val isClasspath = jarPath.startsWith("classpath:")
+        val isDir = !isClasspath && java.io.File(jarPath).isDirectory
+        val entries = when {
+            isClasspath -> yamlResourceLoader.listYamlEntries(jarPath)
+            isDir -> yamlResourceLoader.listYamlEntriesFromDir(jarPath)
+            else -> yamlResourceLoader.listYamlEntries(jarPath)
         }
         if (entries.isEmpty()) return
 
         val read: (String) -> String? = { entry ->
-            if (isDir) yamlResourceLoader.readEntryFromDir(jarPath, entry)
-            else yamlResourceLoader.readEntry(jarPath, entry)
+            when {
+                isClasspath -> yamlResourceLoader.readEntry(jarPath, entry)
+                isDir -> yamlResourceLoader.readEntryFromDir(jarPath, entry)
+                else -> yamlResourceLoader.readEntry(jarPath, entry)
+            }
         }
         val resolver: (String) -> String? = read
 

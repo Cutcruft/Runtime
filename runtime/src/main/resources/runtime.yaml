@@ -61,6 +61,7 @@ routing:
 #       to: boards
 
 ui:
+  enabled: true
   pluginOrder: []
   landingPage: null
   nav:

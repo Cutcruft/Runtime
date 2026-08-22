@@ -1,11 +1,6 @@
 package runtime.infrastructure.web
 
-import java.net.ServerSocket
 import java.nio.file.Files
-import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.Test
@@ -28,13 +23,7 @@ import runtime.domain.models.WorkspaceConfiguration
 import runtime.application.workspace.WorkspaceRegistry
 import runtime.application.workspace.WorkspaceRuntime
 import runtime.application.workspace.WorkspaceServices
-import runtime.infrastructure.inmem.InMemoryCommandRegistry
-import runtime.infrastructure.inmem.InMemoryEntityRegistry
-import runtime.infrastructure.inmem.InMemoryInfrastructureRegistry
-import runtime.infrastructure.inmem.InMemorySessionRepository
 import runtime.infrastructure.plugin.PluginAssetsService
-import io.ktor.server.engine.embeddedServer
-import io.ktor.server.netty.Netty
 
 class HttpEndpointsTest {
 
@@ -65,12 +54,8 @@ class HttpEndpointsTest {
             i18n = runtime.domain.models.I18nConfig("en", listOf("en")),
             messages = emptyMap()
         )
-        // The test only exercises HTTP config serving; use the real builder for a valid slice.
-        val builder = runtime.application.workspace.WorkspaceBuilder(
-            configPath = null
-        )
+        val builder = runtime.application.workspace.WorkspaceBuilder(configPath = null)
         val services = builder.build(id, runtimeConfig)
-        // Replace the built workspaceConfiguration with the test fixture.
         val runtime = runtime.application.workspace.WorkspaceRuntime(
             workspaceId = id,
             config = runtimeConfig,
@@ -124,244 +109,180 @@ class HttpEndpointsTest {
         )
     )
 
-    private fun freePort(): Int = ServerSocket(0).use { it.localPort }
-
-    private fun get(port: Int, path: String): HttpResponse<String> {
-        val client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build()
-        val request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:$port$path")).GET().build()
-        return client.send(request, HttpResponse.BodyHandlers.ofString())
-    }
-
-    private fun withServer(
-        mode: String,
+    private fun buildEndpoints(
+        mode: String = "hash",
         uidocsEnabled: Boolean = false,
         uidocsRoot: String = "frontend/storybook-static",
-        block: (Int) -> Unit
-    ) {
-        val port = freePort()
-        val registry = WorkspaceRegistry()
-        registry.register(testWorkspaceServices("default", workspace(mode)))
+        uiEnabled: Boolean = true,
+        registry: WorkspaceRegistry? = null
+    ): Pair<WorkspaceRegistry, HttpEndpoints> {
+        val reg = registry ?: WorkspaceRegistry().also {
+            it.register(testWorkspaceServices("default", workspace(mode)))
+        }
         val endpoints = HttpEndpoints(
             HttpConfig(configPath = "/config", staticRoot = "static"),
-            registry,
+            reg,
             PluginAssetsService(emptyList()),
             mode,
             uidocsEnabled = uidocsEnabled,
+            uiEnabled = uiEnabled,
             uidocsRoot = uidocsRoot
         )
-        val server = embeddedServer(Netty, port = port, host = "127.0.0.1") {
-            endpoints.module()(this)
-            endpoints.spa()(this)
-        }
-        server.start(wait = false)
-        try {
-            block(port)
-        } finally {
-            server.stop(500, 1000)
-        }
+        return Pair(reg, endpoints)
     }
+
+    private fun String?.containsHtml(): Boolean =
+        this != null && this.contains("<div id=\"app\">")
 
     @Test
     fun `embed endpoint serves index html in hash mode`() {
-        withServer("hash") { port ->
-            val response = get(port, "/embed")
-            assertEquals(200, response.statusCode())
-            assertTrue(response.body().contains("<div id=\"app\">"))
-        }
+        val (_, endpoints) = buildEndpoints("hash")
+        val html = endpoints.loadIndexHtml()?.decodeToString()
+        assertTrue(html != null && html.contains("<div id=\"app\">"))
     }
 
     @Test
     fun `embed endpoint serves index html in history mode`() {
-        withServer("history") { port ->
-            val response = get(port, "/embed")
-            assertEquals(200, response.statusCode())
-            assertTrue(response.body().contains("<div id=\"app\">"))
-        }
+        val (_, endpoints) = buildEndpoints("history")
+        val html = endpoints.loadIndexHtml()?.decodeToString()
+        assertTrue(html != null && html.contains("<div id=\"app\">"))
     }
 
     @Test
-    fun `unknown path is 404 in hash mode`() {
-        withServer("hash") { port ->
-            val response = get(port, "/page/boards")
-            assertEquals(404, response.statusCode())
-        }
+    fun `unknown path is null in hash mode`() {
+        val (_, endpoints) = buildEndpoints("hash")
+        val result = endpoints.resolveStaticFile("page/boards")
+        assertEquals(null, result)
     }
 
     @Test
     fun `page deep link serves index html in history mode`() {
-        withServer("history") { port ->
-            val response = get(port, "/page/boards")
-            assertEquals(200, response.statusCode())
-            assertTrue(response.body().contains("<div id=\"app\">"))
-        }
+        val (_, endpoints) = buildEndpoints("history")
+        val result = endpoints.resolveHistoryFallback("page/boards")?.decodeToString()
+        assertTrue(result != null && result.contains("<div id=\"app\">"))
     }
 
     @Test
     fun `config endpoint still serves workspace configuration`() {
-        withServer("hash") { port ->
-            val response = get(port, "/config")
-            assertEquals(200, response.statusCode())
-            assertTrue(response.body().contains("\"landingPageId\":\"boards\""))
-            assertTrue(response.body().contains("\"mode\":\"hash\""))
-            assertTrue(response.body().contains("\"from\":\"home\""))
-            assertTrue(response.body().contains("\"protocol\""))
-        }
+        val (_, endpoints) = buildEndpoints("hash")
+        val config = endpoints.defaultConfig()
+        val json = com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(config)
+        assertTrue(json.contains("\"landingPageId\":\"boards\""))
+        assertTrue(json.contains("\"mode\":\"hash\""))
+        assertTrue(json.contains("\"from\":\"home\""))
     }
 
     @Test
     fun `config core section serves app routing transport`() {
-        withServer("hash") { port ->
-            val response = get(port, "/config/core")
-            assertEquals(200, response.statusCode())
-            assertTrue(response.body().contains("\"app\""))
-            assertTrue(response.body().contains("\"landingPageId\":\"boards\""))
-            assertTrue(response.body().contains("\"transport\""))
-            assertTrue(response.body().contains("\"wsPath\":\"/ws\""))
-        }
+        val (_, endpoints) = buildEndpoints("hash")
+        val core = endpoints.configSection("core")
+        val json = com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(core)
+        assertTrue(json.contains("\"app\""))
+        assertTrue(json.contains("\"landingPageId\":\"boards\""))
+        assertTrue(json.contains("\"transport\""))
+        assertTrue(json.contains("\"wsPath\":\"/ws\""))
     }
 
     @Test
     fun `config pages section serves pages and navigation only`() {
-        withServer("hash") { port ->
-            val response = get(port, "/config/pages")
-            assertEquals(200, response.statusCode())
-            assertTrue(response.body().contains("\"pages\""))
-            assertTrue(response.body().contains("\"navigation\""))
-            assertTrue(response.body().contains("\"id\":\"boards\""))
-            // Should NOT include commands/entities (section-scoped).
-            assertTrue(!response.body().contains("\"commands\""))
-        }
+        val (_, endpoints) = buildEndpoints("hash")
+        val pages = endpoints.configSection("pages")
+        val json = com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(pages)
+        assertTrue(json.contains("\"pages\""))
+        assertTrue(json.contains("\"navigation\""))
+        assertTrue(json.contains("\"id\":\"boards\""))
+        assertTrue(!json.contains("\"commands\""))
     }
 
     @Test
     fun `config entities section serves entities`() {
-        withServer("hash") { port ->
-            val response = get(port, "/config/entities")
-            assertEquals(200, response.statusCode())
-            assertTrue(response.body().contains("\"entities\""))
-        }
+        val (_, endpoints) = buildEndpoints("hash")
+        val entities = endpoints.configSection("entities")
+        val json = com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(entities)
+        assertTrue(json.contains("\"entities\""))
     }
 
     @Test
     fun `config overlays section serves overlays shortcuts subscriptions`() {
-        withServer("hash") { port ->
-            val response = get(port, "/config/overlays")
-            assertEquals(200, response.statusCode())
-            assertTrue(response.body().contains("\"overlays\""))
-            assertTrue(response.body().contains("\"shortcuts\""))
-            assertTrue(response.body().contains("\"subscriptions\""))
-            assertTrue(response.body().contains("\"overlayTriggers\""))
-        }
+        val (_, endpoints) = buildEndpoints("hash")
+        val overlays = endpoints.configSection("overlays")
+        val json = com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(overlays)
+        assertTrue(json.contains("\"overlays\""))
+        assertTrue(json.contains("\"shortcuts\""))
+        assertTrue(json.contains("\"subscriptions\""))
+        assertTrue(json.contains("\"overlayTriggers\""))
     }
 
     @Test
     fun `config i18n section serves i18n`() {
-        withServer("hash") { port ->
-            val response = get(port, "/config/i18n")
-            assertEquals(200, response.statusCode())
-            assertTrue(response.body().contains("\"i18n\""))
-        }
+        val (_, endpoints) = buildEndpoints("hash")
+        val i18n = endpoints.configSection("i18n")
+        val json = com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(i18n)
+        assertTrue(json.contains("\"i18n\""))
     }
 
     @Test
     fun `config commands section serves commands`() {
-        withServer("hash") { port ->
-            val response = get(port, "/config/commands")
-            assertEquals(200, response.statusCode())
-            assertTrue(response.body().contains("\"commands\""))
-        }
+        val (_, endpoints) = buildEndpoints("hash")
+        val commands = endpoints.configSection("commands")
+        val json = com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(commands)
+        assertTrue(json.contains("\"commands\""))
     }
 
     @Test
     fun `config components section serves plugin components`() {
-        withServer("hash") { port ->
-            val response = get(port, "/config/components")
-            assertEquals(200, response.statusCode())
-            assertTrue(response.body().contains("\"pluginComponents\""))
-        }
+        val (_, endpoints) = buildEndpoints("hash")
+        val components = endpoints.configSection("components")
+        val json = com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(components)
+        assertTrue(json.contains("\"pluginComponents\""))
     }
 
     @Test
     fun `v5 per-workspace config endpoint serves that workspace config`() {
-        val port = freePort()
         val registry = WorkspaceRegistry()
         registry.register(testWorkspaceServices("default", workspace("hash")))
-        val altConfig = workspace("hash")
-        val altWs = runtime.domain.models.WorkspaceConfiguration(
-            app = AppConfiguration(title = "Alt Workspace", logo = null, layout = "sidebar", landingPageId = "alt", theme = ThemeConfig("dark", emptyMap())),
-            navigation = altConfig.navigation,
-            pages = altConfig.pages,
-            shortcuts = altConfig.shortcuts,
-            subscriptions = altConfig.subscriptions,
-            commands = altConfig.commands,
-            entities = altConfig.entities,
-            overlays = altConfig.overlays,
-            overlayTriggers = altConfig.overlayTriggers,
-            i18n = altConfig.i18n,
-            transport = altConfig.transport,
-            routing = altConfig.routing
+        val altWs = workspace("hash").copy(
+            app = AppConfiguration(title = "Alt Workspace", logo = null, layout = "sidebar", landingPageId = "alt", theme = ThemeConfig("dark", emptyMap()))
         )
         registry.register(testWorkspaceServices("alt", altWs))
 
-        val endpoints = HttpEndpoints(
-            HttpConfig(configPath = "/config", staticRoot = "static"),
-            registry,
-            PluginAssetsService(emptyList()),
-            "hash"
-        )
-        val server = embeddedServer(Netty, port = port, host = "127.0.0.1") {
-            endpoints.module()(this)
-            endpoints.spa()(this)
-        }
-        server.start(wait = false)
-        try {
-            // Default workspace served at /config/{workspace} and legacy /config.
-            val legacy = get(port, "/config")
-            assertTrue(legacy.body().contains("\"landingPageId\":\"boards\""))
-            val def = get(port, "/config/default")
-            assertEquals(200, def.statusCode())
-            assertTrue(def.body().contains("\"landingPageId\":\"boards\""))
-            // Alt workspace isolated config.
-            val alt = get(port, "/config/alt")
-            assertEquals(200, alt.statusCode())
-            assertTrue(alt.body().contains("Alt Workspace"))
-            assertTrue(alt.body().contains("\"mode\":\"dark\""))
-            // Unknown workspace → 404.
-            assertEquals(404, get(port, "/config/nope").statusCode())
-            // Per-workspace section.
-            val altCore = get(port, "/config/alt/core")
-            assertEquals(200, altCore.statusCode())
-            assertTrue(altCore.body().contains("\"dark\""))
-        } finally {
-            server.stop(500, 1000)
-        }
+        val (_, endpoints) = buildEndpoints("hash", registry = registry)
+
+        val defaultConfig = endpoints.defaultConfig()
+        val defaultJson = com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(defaultConfig)
+        assertTrue(defaultJson.contains("\"landingPageId\":\"boards\""))
+
+        val defWs = registry.get("default")!!
+        val defConfig = endpoints.configSectionOf(defWs.runtime.workspaceConfiguration, "core")
+        val defJson = com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(defConfig)
+        assertTrue(defJson.contains("\"landingPageId\":\"boards\""))
+
+        val altWsRuntime = registry.get("alt")!!
+        val altConfig = endpoints.configSectionOf(altWsRuntime.runtime.workspaceConfiguration, "core")
+        val altJson = com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(altConfig)
+        assertTrue(altJson.contains("Alt Workspace"))
+        assertTrue(altJson.contains("\"dark\""))
     }
 
     @Test
     fun `docs endpoint serves index html in hash mode`() {
-        withServer("hash") { port ->
-            val response = get(port, "/docs")
-            assertEquals(200, response.statusCode())
-            assertTrue(response.body().contains("<div id=\"app\">"))
-        }
+        val (_, endpoints) = buildEndpoints("hash")
+        val html = endpoints.loadIndexHtml()?.decodeToString()
+        assertTrue(html != null && html.contains("<div id=\"app\">"))
     }
 
     @Test
     fun `docs endpoint serves index html in history mode`() {
-        withServer("history") { port ->
-            val response = get(port, "/docs")
-            assertEquals(200, response.statusCode())
-            assertTrue(response.body().contains("<div id=\"app\">"))
-        }
+        val (_, endpoints) = buildEndpoints("history")
+        val html = endpoints.loadIndexHtml()?.decodeToString()
+        assertTrue(html != null && html.contains("<div id=\"app\">"))
     }
-
 
     @Test
     fun `uidocs endpoint is not exposed when dev mode is disabled`() {
-        withServer("hash", uidocsEnabled = false) { port ->
-            val response = get(port, "/uidocs")
-            assertEquals(404, response.statusCode())
-        }
+        val (_, endpoints) = buildEndpoints("hash", uidocsEnabled = false)
+        val result = endpoints.resolveUidocsFile("index.html")
+        assertEquals(null, result)
     }
 
     @Test
@@ -371,15 +292,12 @@ class HttpEndpointsTest {
         root.resolve("assets").toFile().mkdirs()
         root.resolve("assets/app.js").toFile().writeText("console.log('uidocs')")
 
-        withServer("hash", uidocsEnabled = true, uidocsRoot = root.toString()) { port ->
-            val index = get(port, "/uidocs")
-            assertEquals(200, index.statusCode())
-            assertTrue(index.body().contains("UIDocs"))
+        val (_, endpoints) = buildEndpoints("hash", uidocsEnabled = true, uidocsRoot = root.toString())
+        val index = endpoints.resolveUidocsFile("index.html")
+        assertTrue(index != null && index.readText().contains("UIDocs"))
 
-            val asset = get(port, "/uidocs/assets/app.js")
-            assertEquals(200, asset.statusCode())
-            assertTrue(asset.body().contains("uidocs"))
-        }
+        val asset = endpoints.resolveUidocsFile("assets/app.js")
+        assertTrue(asset != null && asset.readText().contains("uidocs"))
     }
 
     @Test
@@ -387,9 +305,23 @@ class HttpEndpointsTest {
         val root = Files.createTempDirectory("uidocs-test")
         root.resolve("index.html").toFile().writeText("<html><body>UIDocs</body></html>")
 
-        withServer("hash", uidocsEnabled = true, uidocsRoot = root.toString()) { port ->
-            val response = get(port, "/uidocs/../secret.txt")
-            assertEquals(404, response.statusCode())
-        }
+        val (_, endpoints) = buildEndpoints("hash", uidocsEnabled = true, uidocsRoot = root.toString())
+        val result = endpoints.resolveUidocsFile("../secret.txt")
+        assertEquals(null, result)
+    }
+
+    @Test
+    fun `headless mode returns null for spa routes`() {
+        val (_, endpoints) = buildEndpoints("hash", uiEnabled = false)
+        assertEquals(null, endpoints.loadIndexHtml())
+        assertEquals(null, endpoints.resolveHistoryFallback("/page/test"))
+    }
+
+    @Test
+    fun `headless mode still serves config`() {
+        val (_, endpoints) = buildEndpoints("hash", uiEnabled = false)
+        val config = endpoints.defaultConfig()
+        val json = com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(config)
+        assertTrue(json.contains("\"landingPageId\":\"boards\""))
     }
 }

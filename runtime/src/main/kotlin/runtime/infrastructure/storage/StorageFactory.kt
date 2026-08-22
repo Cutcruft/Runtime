@@ -1,6 +1,7 @@
 package runtime.infrastructure.storage
 
 import java.io.File
+import runtime.RuntimeMode
 import runtime.domain.models.StorageConfig
 import runtime.domain.repositories.EntityRegistry
 import runtime.domain.storage.EntityStore
@@ -12,8 +13,8 @@ import runtime.domain.storage.EntityStore
  * - `memory` → in-memory with optional per-entity LRU cap (`storage.memory.maxEntities`).
  * - `files` → in-memory hot layer + atomic JSON files (write-behind flush).
  * - `hybrid` → capped hot LRU layer + files as the cold layer (load-on-miss).
- * - `redis` → in-memory hot layer + Redis as the cold layer.
- * - `db` → in-memory hot layer + JDBC/H2 as the cold layer.
+ * - `redis` → in-memory hot layer + Redis as the cold layer (JVM only).
+ * - `db` → in-memory hot layer + JDBC/H2 as the cold layer (JVM only).
  */
 data class StorageResult(
     val store: EntityStore,
@@ -24,18 +25,24 @@ class StorageFactory {
 
     fun create(config: StorageConfig, entityRegistry: EntityRegistry): StorageResult {
         if (config.backend == "redis") {
+            if (RuntimeMode.isNative) {
+                throw IllegalArgumentException("Redis backend is not supported in native mode")
+            }
             val url = config.redisUrl
                 ?: throw IllegalArgumentException("storage.redis.url must be set for 'redis' backend")
-            val cold = RedisColdStore(url, entityRegistry)
+            val cold = createRedisColdStore(url, entityRegistry)
             return StorageResult(
                 store = DefaultEntityStore(cold = cold, maxEntities = config.maxEntities),
                 coldStore = cold
             )
         }
         if (config.backend == "db") {
+            if (RuntimeMode.isNative) {
+                throw IllegalArgumentException("DB backend is not supported in native mode")
+            }
             val url = config.dbUrl
                 ?: throw IllegalArgumentException("storage.db.url must be set for 'db' backend")
-            val cold = DbColdStore(url, entityRegistry)
+            val cold = createDbColdStore(url, entityRegistry)
             return StorageResult(
                 store = DefaultEntityStore(cold = cold, maxEntities = config.maxEntities),
                 coldStore = cold
@@ -69,5 +76,17 @@ class StorageFactory {
             store = DefaultEntityStore(cold = cold, maxEntities = cap),
             coldStore = cold
         )
+    }
+
+    private fun createRedisColdStore(url: String, entityRegistry: EntityRegistry): ColdStore {
+        val clazz = Class.forName("runtime.infrastructure.storage.RedisColdStore")
+        val ctor = clazz.getDeclaredConstructor(String::class.java, EntityRegistry::class.java)
+        return ctor.newInstance(url, entityRegistry) as ColdStore
+    }
+
+    private fun createDbColdStore(url: String, entityRegistry: EntityRegistry): ColdStore {
+        val clazz = Class.forName("runtime.infrastructure.storage.DbColdStore")
+        val ctor = clazz.getDeclaredConstructor(String::class.java, EntityRegistry::class.java)
+        return ctor.newInstance(url, entityRegistry) as ColdStore
     }
 }

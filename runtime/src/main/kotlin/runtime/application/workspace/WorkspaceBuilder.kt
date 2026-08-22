@@ -84,7 +84,7 @@ class WorkspaceBuilder(
             maxEventsPerProject = config.audit.maxEventsPerProject
         ) { InMemoryAuditLog() }
 
-        val activeSessions = mutableMapOf<String, io.ktor.websocket.DefaultWebSocketSession>()
+        val activeSessions = mutableMapOf<String, runtime.infrastructure.ws.WsSession>()
         val sessionManager = SessionManager(sessionRepository, projectRepository)
         val presenceManager = PresenceManager()
         val eventPublisher = WsEventPublisher(sessionManager, activeSessions, presenceManager, config.collaboration.enabled)

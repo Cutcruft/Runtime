@@ -2,6 +2,7 @@ package runtime.infrastructure.plugin
 
 import java.io.File
 import java.util.jar.JarFile
+import runtime.RuntimeMode
 import runtime.domain.plugin.yaml.YamlPluginLoader
 
 /**
@@ -31,9 +32,10 @@ class YamlResourceLoader {
 
     /**
      * Returns the YAML resource paths contained in [jarPath] under the `yaml/` prefix.
-     * Works for both a JAR file and an unpacked plugin directory.
+     * Works for both a JAR file, an unpacked plugin directory, and classpath resources (native).
      */
     fun listYamlEntries(jarPath: String): List<String> {
+        if (jarPath.startsWith("classpath:")) return listClasspathYamlEntries(jarPath)
         val file = File(jarPath)
         if (file.isDirectory) return listYamlEntriesFromDir(jarPath)
         return runCatching {
@@ -51,9 +53,10 @@ class YamlResourceLoader {
 
     /**
      * Reads a YAML entry (or a referenced script/SQL file) from [jarPath].
-     * Returns the file content or `null` when missing. Works for JAR and directory.
+     * Returns the file content or `null` when missing. Works for JAR, directory, and classpath.
      */
     fun readEntry(jarPath: String, name: String): String? {
+        if (jarPath.startsWith("classpath:")) return readClasspathEntry(jarPath, name)
         if (File(jarPath).isDirectory) return readEntryFromDir(jarPath, name)
         val entry = if (name.startsWith("yaml/")) name else "yaml/$name"
         return runCatching {
@@ -84,5 +87,43 @@ class YamlResourceLoader {
         val file = File(File(dir, "yaml"), relative)
         if (!file.isFile) return null
         return runCatching { file.readText() }.getOrNull()
+    }
+
+    // --- Native / classpath resource support ---
+
+    /**
+     * Native mode: lists YAML entries from classpath resources.
+     * [jarPath] format: "classpath:plugins/<pluginId>"
+     */
+    private fun listClasspathYamlEntries(jarPath: String): List<String> {
+        val pluginId = jarPath.removePrefix("classpath:plugins/")
+        val classLoader = javaClass.classLoader
+        val resourcePath = "plugins/$pluginId/yaml"
+        val entries = mutableListOf<String>()
+
+        // Try getting the resource URL to list children
+        val resourceUrl = classLoader.getResource(resourcePath) ?: return entries
+        if (resourceUrl.protocol == "file") {
+            val dir = File(resourceUrl.toURI())
+            if (dir.isDirectory) {
+                dir.walkTopDown()
+                    .filter { it.isFile && (it.extension.lowercase() in setOf("yaml", "yml")) }
+                    .map { it.relativeTo(dir).path.replace(File.separatorChar, '/') }
+                    .forEach { entries.add(it) }
+            }
+        }
+        // Note: jar-in-native-image protocol handling would go here if needed
+        return entries.sorted()
+    }
+
+    /**
+     * Native mode: reads a YAML entry from classpath resources.
+     */
+    private fun readClasspathEntry(jarPath: String, name: String): String? {
+        val pluginId = jarPath.removePrefix("classpath:plugins/")
+        val entry = if (name.startsWith("yaml/")) name else "yaml/$name"
+        val resourcePath = "plugins/$pluginId/$entry"
+        val stream = javaClass.classLoader.getResourceAsStream(resourcePath) ?: return null
+        return stream.bufferedReader().use { it.readText() }
     }
 }

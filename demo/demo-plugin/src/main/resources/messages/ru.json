@@ -75,5 +75,11 @@
   "stencil.ellipse": "Эллипс",
   "stencil.process": "Процесс",
   "stencil.decision": "Решение",
-  "nav.group.demo": "Демо"
+  "nav.group.demo": "Демо",
+  "canvas.menu.copy": "Копировать элемент",
+  "tasks.delete.confirm": "Удалить эту задачу?",
+  "tasks.menu.duplicate": "Дублировать",
+  "tasks.menu.move": "Переместить задачу",
+  "tasks.menu.open": "Открыть",
+  "tasks.reopen.confirm": "Переоткрыть эту задачу?"
 }

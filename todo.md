@@ -959,12 +959,219 @@ export function cycle() { /* ... */ }
 
 ---
 
-## Фаза V12 - требуется проектирование
-- [ ] Выпиливание инфраструктурных команд (gRPC/rest) из ядра и SDK.
-- [ ] Заменить Ktor на Quarkus (runtime + SDK).
-- [ ] Оптимизировать и адаптировать код под GraalVM Native Image (runtime + SDK).
-- [ ] Улучшить конфигурируемость системы сделать возможность полного отключения ui 
+## Фаза V12 — ✅ Завершено (22.08.2026)
 
+### ✅ V12.1 — Удаление gRPC/REST из SDK
+- gRPC/protobuf команды вынесены из runtime → доступны только через плагины (opt-in).
+- runtime/pom.xml: gRPC/protobuf зависимости удалены из основного профиля, только в `default` (JVM-only) профиле.
+
+### ✅ V12.2 — Замена Ktor на Quarkus
+- Зависимости: quarkus-rest, quarkus-rest-jackson, quarkus-websockets-next (plural 's'), quarkus-vertx-http. BOM 3.17.5.
+- `WsSession` интерфейс с blocking методами (`sendBlocking`, `receiveBlocking`, `closeBlocking`).
+- `QuarkusWsSession` — `LinkedBlockingQueue` + `AtomicBoolean` для blocking операций.
+- `WsResource` — Quarkus WebSocket handler с `@WebSocket` аннотацией.
+- `HttpResource` — REST endpoints через Quarkus REST.
+- `WebServer` — `RuntimeState` (static holder) для config/registry/messages/httpEndpoints.
+- `application.yaml` → `runtime.yaml` (избегаем коллизии с Quarkus config).
+- 227 тестов PASS.
+
+### ✅ V12.3 — GraalVM Native Image
+- **RuntimeMode.kt** — detection через `org.graalvm.nativeimage.imagecode` system property.
+- **PluginLoader.kt** — dual-path: `discoverFilesystem()` (JVM) vs `discoverClasspath()` (native).
+- **PluginBootstrap.kt** — `sqlCommandFactory` + KTS gated behind `RuntimeMode.isJvm`.
+- **KotlinScriptEngine.noop()** — companion factory для native mode.
+- **MessageCatalogLoader.kt** — classpath resource loading для native.
+- **YamlResourceLoader.kt** — classpath resource support.
+- **META-INF/native-image/** — resource-config.json + reflect-config.json.
+- **Coroutine-to-blocking conversion**: WsSessionHandler, WsEventPublisher — все методы non-suspend, `LinkedBlockingQueue` + `ReentrantLock` + Java `ExecutorService`.
+- **Lettuce/H2 exclusion**: `provided` scope в native профиле, `StorageFactory` — `Class.forName` reflection.
+- **Результат**: 64MB Mach-O arm64 binary, boots successfully, Quarkus banner.
+- **Ограничения native mode**: Redis/DB/H2/Calcite/KTS/gRPC недоступны (только HTTP/WS + YAML плагины + file storage).
+
+### ✅ V12.4 — Headless mode
+- Backend работает без frontend static files (HTML, JS, CSS отсутствуют).
+- 220 тестов PASS (headless专项).
+- `HttpEndpoints` — graceful 404 для отсутствующих static файлов.
+
+### Решения, принятые в V12
+1. **Native = lightweight core**: HTTP/WS + entity CRUD + YAML плагины + file storage. JVM = полный набор.
+2. **Blocking архитектура для WS**: `WsSessionHandler` полностью non-suspend除了 `handle()` entry point.
+3. **Корутины в leaf-level**: `runBlocking` только для `dispatchService.dispatch()` и `handler.handle()` — trivial state machine.
+4. **Reflection для excluded backends**: `StorageFactory` загружает `RedisColdStore`/`DbColdStore` через `Class.forName`.
+
+---
+
+## Фаза V13 — Проектирование
+
+### Архитектурные решения (согласованы с пользователем)
+
+**1. Runtime = минимальный сервер**
+- HTTP/WS сервер (Quarkus)
+- Plugin loader (обнаружение + загрузка JAR)
+- Entity CRUD (create/update/delete/list)
+- Config loader (runtime.yaml)
+- Session management
+- Всё остальное → SDK
+
+**2. SDK = полный фреймворк**
+- Public contracts (interfaces, models, registries)
+- QueryEngine (SQL через Calcite)
+- InfrastructureClient (gRPC)
+- PluginContext (API для плагинов)
+- YAML plugin loader + auto-CRUD
+- Storage backends (Redis, H2, File)
+- Event bus (для pipeline commands)
+- Message catalog (i18n)
+- Kotlin script engine
+
+**3. Go CLI = система сборки плагинов**
+- Статический анализ зависимостей (plugin.yaml → minimal JAR)
+- Single JAR output format (config + classes + frontend assets)
+- Full toolchain: init, build, dev, validate
+
+**4. Pipeline commands = PluginContext event bus**
+- Plugin B подписывается на событие Plugin A через PluginContext
+- Runtime dispatches A→B автоматически
+- Programmatic API (не YAML declarations)
+
+**5. Config split**
+- Property-based: server settings (port, host, storage backend)
+- YAML-based: UI structure, plugins, entities, commands (runtime.yaml, ui.yaml)
+
+---
+
+### Подфазы V13 (порядок реализации)
+
+#### V13.1 — Architecture Cleanup (runtime/SDK split)
+**Цель**: Чистое разделение runtime и SDK. Runtime = минимальный сервер.
+
+**Задачи**:
+1. Перенести в SDK: QueryEngine, InfrastructureClient, StorageFactory, MessageCatalogLoader, KotlinScriptEngine
+2. Runtime получает только: HTTP/WS handlers, PluginLoader, SessionManager, ConfigLoader
+3. PluginContext расширяет API для доступа к SDK функциональности
+4. Обновить все плагины для использования нового API
+5. Tests: 227+ тестов PASS
+
+**Файлы**:
+- `runtime/src/main/kotlin/runtime/` — только серверная логика
+- `sdk/src/main/kotlin/sdk/` — все utility классы
+- `sdk/src/main/kotlin/sdk/PluginContext.kt` — расширенный API
+
+#### V13.2 — Native Backends (GraalVM substitutions)
+**Цель**: Вернуть Redis/H2/Calcite/KTS в native mode.
+
+**Задачи**:
+1. GraalVM substitutions для Lettuce (Redis) — `DnsNameResolverBuilder` static init
+2. GraalVM substitutions для H2 — `JavassistProxyFactory` замена
+3. GraalVM substitutions для Calcite — `Janino` замена (e.g., `GraalCalciteSqlParser`)
+4. GraalVM substitutions для KTS — `KotlinScriptEngine` с cached compilation
+5. Тесты: все storage backends работают в native mode
+6. Native image size benchmark: цель < 100MB
+
+**Файлы**:
+- `runtime/src/main/resources/META-INF/native-image/` — substitution configs
+- `runtime/src/main/kotlin/runtime/graalvm/` — substitution classes
+
+#### V13.3 — Go CLI Tool (`cutcrft`)
+**Цель**: Полноценный инструмент разработки плагинов.
+
+**Задачи**:
+1. `cutcrft init <name>` — scaffold plugin.yaml + entities/ + commands/ + plugin.kt
+2. `cutcrft build` — компиляция + static dependency analysis + minimal JAR
+3. `cutcrft dev` — hot-reload dev server (file watcher + Maven incremental build)
+4. `cutcrft validate` — проверка plugin.yaml + entity schemas + command signatures
+5. `cutcrft list` — список доступных SDK features для плагина
+6. Static dependency analysis: plugin.yaml → graph of needed SDK classes → tree-shake JAR
+
+**Технологии**:
+- Go 1.22+
+- `go-java-builder` или вызов Maven через `os/exec`
+- YAML parser (gopkg.in/yaml.v3)
+- File hashing для incremental builds
+- WebSocket для dev server
+
+**Структура**:
+```
+cmd/cutcrft/
+├── init.go        # Scaffold plugin
+├── build.go       # Compile + package
+├── dev.go         # Hot-reload dev server
+├── validate.go    # Check plugin.yaml
+├── analyze.go     # Static dependency analysis
+└── main.go        # CLI entry point
+```
+
+#### V13.4 — Plugin SDK Maturity
+**Цель**: YAML plugin loader работает стабильно, auto-CRUD генерирует команды.
+
+**Задачи**:
+1. YAML plugin loader: entity definitions → auto-CRUD commands
+2. Command chaining: Plugin A output → Plugin B input через event bus
+3. Frontend assets bundling в JAR (Vite build → static/)
+4. Plugin hot-reload без restart (JAR swap + classloader refresh)
+5. Documentation: plugin development guide (YAML + Kotlin)
+
+**Файлы**:
+- `sdk/src/main/kotlin/sdk/plugin/` — YAML loader
+- `sdk/src/main/kotlin/sdk/command/` — auto-CRUD generator
+- `sdk/src/main/kotlin/sdk/event/` — event bus
+
+#### V13.5 — Frontend Modernization (Preact Rewrite)
+**Цель**: Все компоненты на Preact, нет Vue зависимостей.
+
+**Задачи**:
+1. Rewrite все 4 editor (Canvas/Diagram/RichText/Scene3D) на Preact + native APIs
+2. Rewrite shell components (CommandPalette, Sidebar, OverlayHost) на Preact
+3. SDK frontend: `pluginSdk.js` обновлён для Preact API
+4. Remove Vue из runtime/frontend
+5. CSS: Vanilla Extract для всех компонентов
+6. Tests: all editors functional
+
+**Файлы**:
+- `runtime/frontend/src/primitives/` — Preact primitives
+- `runtime/frontend/src/editors/` — Preact editors
+- `sdk/frontend/` — updated pluginSdk.js
+
+#### V13.6 — Production Readiness
+**Цель**: Système prêt pour la production.
+
+**Задачи**:
+1. Docker multi-stage build (GraalVM native → minimal image)
+2. Health check endpoint (`/health`, `/ready`)
+3. Graceful shutdown (Quarkus shutdown hooks)
+4. Structured logging (JSON format)
+5. Metrics endpoint (Prometheus format)
+6. CI/CD pipeline (GitHub Actions: build → test → Docker → deploy)
+7. Configuration: environment variables → runtime.yaml mapping
+
+**Файлы**:
+- `Dockerfile` — multi-stage native build
+- `.github/workflows/ci.yml` — CI/CD pipeline
+- `runtime/src/main/kotlin/runtime/infrastructure/health/` — health checks
+
+#### V13.7 — Full Integration Test
+**Цель**: Все компоненты работают вместе.
+
+**Задачи**:
+1. All storage backends (memory/files/hybrid/redis/db) в native mode
+2. Plugin loading (YAML + Kotlin plugins)
+3. Multi-workspace isolation
+4. Collaboration (presence + cursors)
+5. Frontend: all pages functional (boards/tasks/docs/diagram/scene)
+6. Performance: < 100ms response time, < 100MB native image
+
+---
+
+### Порядок реализации
+1. V13.1 — Architecture Cleanup (2 недели)
+2. V13.2 — Native Backends (2 недели)
+3. V13.3 — Go CLI Tool (3 недели)
+4. V13.4 — Plugin SDK Maturity (2 недели)
+5. V13.5 — Frontend Modernization (3 недели)
+6. V13.6 — Production Readiness (2 недели)
+7. V13.7 — Full Integration Test (1 неделя)
+
+**Общий срок**: ~15 недель (4 месяца)
 ## Риски и митигация
 
 | Риск | Вероятность | Митигация |

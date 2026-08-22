@@ -5,6 +5,8 @@ import com.fasterxml.jackson.module.kotlin.KotlinModule
 import java.io.File
 import java.util.jar.JarFile
 
+import runtime.RuntimeMode
+
 /**
  * Loads message catalogs from a plugin JAR.
  *
@@ -20,6 +22,11 @@ class MessageCatalogLoader {
 
     /** Loads all `messages` JSON catalogs from [jarPath], namespacing keys with [pluginId]. */
     fun loadFromJar(pluginId: String, jarPath: String): Map<String, Map<String, String>> {
+        // Native mode: load from classpath resources
+        if (RuntimeMode.isNative || jarPath.startsWith("classpath:")) {
+            return loadFromClasspathPlugin(pluginId)
+        }
+
         val jarFile = File(jarPath)
         if (!jarFile.exists()) return emptyMap()
         val result = mutableMapOf<String, Map<String, String>>()
@@ -109,6 +116,24 @@ class MessageCatalogLoader {
                 }
             }
         }
+    }
+
+    /**
+     * Native mode: loads message catalogs from classpath resources for a plugin.
+     * Plugin resources are embedded under `plugins/<pluginId>/messages/<locale>.json`.
+     */
+    private fun loadFromClasspathPlugin(pluginId: String): Map<String, Map<String, String>> {
+        val result = mutableMapOf<String, Map<String, String>>()
+        val classLoader = javaClass.classLoader
+        val locales = listOf("en", "ru") // Known locales — extend as needed
+        for (locale in locales) {
+            val stream = classLoader.getResourceAsStream("plugins/$pluginId/messages/$locale.json") ?: continue
+            runCatching {
+                val text = stream.use { it.readBytes().toString(Charsets.UTF_8) }
+                result[locale] = flatten(parse(text), prefix = pluginId)
+            }
+        }
+        return result
     }
 
     @Suppress("UNCHECKED_CAST")

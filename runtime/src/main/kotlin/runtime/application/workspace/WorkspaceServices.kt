@@ -16,7 +16,7 @@ class WorkspaceServices(
     val projectService: runtime.application.project.ProjectService,
     val eventPublisher: runtime.infrastructure.ws.WsEventPublisher,
     val presenceManager: runtime.infrastructure.ws.PresenceManager,
-    val activeSessions: MutableMap<String, io.ktor.websocket.DefaultWebSocketSession>,
+    val activeSessions: MutableMap<String, runtime.infrastructure.ws.WsSession>,
     val wsHandlers: Map<String, runtime.domain.module.WsMessageHandler> = emptyMap(),
     val entityStore: EntityStore
 )
